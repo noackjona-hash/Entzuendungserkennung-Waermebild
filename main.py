@@ -1,7 +1,8 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 from PIL import Image, ImageTk
 import cv2
+import os
 
 from modules.loader import load_and_preprocess
 from modules.geometry import find_both_feet, extract_toes_from_contour
@@ -10,66 +11,69 @@ from modules.analysis import perform_bilateral_analysis
 class IgniteApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Ignite - Thermografische Entzuendungserkennung (Jugend Forscht)")
-        self.root.geometry("1100x850")
-        self.root.configure(bg="#2b2b2b")
+        self.root.title("Ignite - Thermografische Entzündungserkennung")
+        self.root.geometry("1200x900")
+        self.root.configure(bg="#1e1e1e")
 
         self.current_image_path = None
         self.cv_original = None
         self.cv_gray = None
         self.final_cv_image = None
         
-        # --- Manuelle Modus Variablen ---
         self.manual_mode = False
         self.manual_clicks = []
         
-        # --- UI ELEMENTE ---
-        title = tk.Label(root, text="Ignite Diagnose-Tool", font=("Arial", 24, "bold"), bg="#2b2b2b", fg="white")
-        title.pack(pady=15)
+        # --- UI LAYOUT ---
+        # Header
+        header = tk.Frame(root, bg="#2b2b2b", height=80)
+        header.pack(fill=tk.X)
+        title = tk.Label(header, text="IGNITE DIAGNOSE-SYSTEM", font=("Segoe UI", 24, "bold"), bg="#2b2b2b", fg="#00ccff")
+        title.pack(pady=10)
 
-        btn_frame = tk.Frame(root, bg="#2b2b2b")
-        btn_frame.pack(pady=10)
+        # Toolbar
+        toolbar = tk.Frame(root, bg="#333333", pady=10)
+        toolbar.pack(fill=tk.X)
 
-        self.btn_load = tk.Button(btn_frame, text="Waermebild laden", font=("Arial", 12), bg="#0059b3", fg="white", command=self.load_image)
+        self.btn_load = tk.Button(toolbar, text="📁 Bild laden", font=("Arial", 11), bg="#444444", fg="white", command=self.load_image, width=15)
         self.btn_load.pack(side=tk.LEFT, padx=10)
 
-        self.btn_analyze = tk.Button(btn_frame, text="Auto-Analyse", font=("Arial", 12), bg="#009933", fg="white", state=tk.DISABLED, command=self.run_analysis)
+        self.btn_analyze = tk.Button(toolbar, text="⚡ Auto-Analyse", font=("Arial", 11), bg="#007acc", fg="white", state=tk.DISABLED, command=self.run_analysis, width=15)
         self.btn_analyze.pack(side=tk.LEFT, padx=10)
         
-        # NEU: Der Manuelle-Auswahl Button
-        self.btn_manual = tk.Button(btn_frame, text="Manuelle Auswahl", font=("Arial", 12), bg="#b38f00", fg="white", state=tk.DISABLED, command=self.start_manual_mode)
+        self.btn_manual = tk.Button(toolbar, text="🖱️ Manuell wählen", font=("Arial", 11), bg="#d4a017", fg="black", state=tk.DISABLED, command=self.start_manual_mode, width=15)
         self.btn_manual.pack(side=tk.LEFT, padx=10)
 
-        self.btn_pdf = tk.Button(btn_frame, text="Als PDF speichern", font=("Arial", 12), bg="#cc3300", fg="white", state=tk.DISABLED, command=self.save_pdf)
-        self.btn_pdf.pack(side=tk.LEFT, padx=10)
+        self.btn_pdf = tk.Button(toolbar, text="📄 PDF Bericht", font=("Arial", 11), bg="#b32400", fg="white", state=tk.DISABLED, command=self.save_pdf, width=15)
+        self.btn_pdf.pack(side=tk.RIGHT, padx=10)
 
-        # NEU: Ein Canvas (Leinwand) anstelle eines Labels, damit wir Klicks abfangen koennen
-        self.canvas = tk.Canvas(root, bg="#1e1e1e", cursor="crosshair")
-        self.canvas.pack(expand=True, fill=tk.BOTH, padx=20, pady=20)
+        # Hauptbereich (Canvas & Tabelle)
+        main_container = tk.Frame(root, bg="#1e1e1e")
+        main_container.pack(expand=True, fill=tk.BOTH, padx=20, pady=10)
+
+        self.canvas = tk.Canvas(main_container, bg="#000000", highlightthickness=0, cursor="crosshair")
+        self.canvas.pack(side=tk.TOP, expand=True, fill=tk.BOTH)
         self.canvas.bind("<Button-1>", self.on_canvas_click)
 
+        # Statusleiste / Info-Box
+        self.status_var = tk.StringVar(value="System bereit. Bitte Wärmebild laden.")
+        status_bar = tk.Label(root, textvariable=self.status_var, bd=1, relief=tk.SUNKEN, anchor=tk.W, bg="#2b2b2b", fg="#aaaaaa")
+        status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+
     def load_image(self):
-        file_path = filedialog.askopenfilename(filetypes=[("Bilder", "*.jpg *.jpeg *.png")])
+        file_path = filedialog.askopenfilename(filetypes=[("Thermal Images", "*.jpg *.jpeg *.png")])
         if file_path:
             self.current_image_path = file_path
-            self.final_cv_image = None
-            self.manual_mode = False
-            
-            # Bild laden und im Speicher behalten!
             self.cv_original, self.cv_gray = load_and_preprocess(file_path)
             
             if self.cv_original is not None:
                 self.display_image(self.cv_original)
-                
-                # Buttons aktivieren
                 self.btn_analyze.config(state=tk.NORMAL)
                 self.btn_manual.config(state=tk.NORMAL)
                 self.btn_pdf.config(state=tk.DISABLED)
+                self.status_var.set(f"Bild geladen: {os.path.basename(file_path)}")
 
     def run_analysis(self):
         if self.cv_original is None: return
-
-        # Wir arbeiten auf einer KOPIE des Originals, damit wir es nicht zerstoeren
         img_copy = self.cv_original.copy()
         
         left_contour, right_contour = find_both_feet(self.cv_gray)
@@ -78,90 +82,69 @@ class IgniteApp:
             right_toes = extract_toes_from_contour(right_contour, self.cv_gray)
             
             if len(left_toes) == 5 and len(right_toes) == 5:
-                final_image = perform_bilateral_analysis(img_copy, left_toes, right_toes)
+                final_image = perform_bilateral_analysis(img_copy, left_toes, right_toes, self.cv_gray)
                 self.final_cv_image = final_image
                 self.display_image(final_image)
                 self.btn_pdf.config(state=tk.NORMAL)
+                self.status_var.set("Auto-Analyse abgeschlossen.")
             else:
-                messagebox.showwarning("Fehler", f"Auto-Erkennung gescheitert (Links: {len(left_toes)} Zehen, Rechts: {len(right_toes)} Zehen).\n\nBitte nutze den Button 'Manuelle Auswahl'!")
+                messagebox.showwarning("Hinweis", "Auto-Erkennung unvollständig. Bitte manuelle Auswahl nutzen.")
         else:
-            messagebox.showerror("Analyse-Fehler", "Konnte keine zwei separaten Fuesse erkennen. Bitte nutze die manuelle Auswahl.")
+            messagebox.showerror("Fehler", "Füße konnten nicht getrennt werden.")
 
-    # --- MANUELLER MODUS LOGIK ---
     def start_manual_mode(self):
         if self.cv_original is None: return
         self.manual_mode = True
         self.manual_clicks = []
-        self.display_image(self.cv_original) # Bild zuruecksetzen
-        self.btn_pdf.config(state=tk.DISABLED)
-        messagebox.showinfo("Manuelle Diagnose", "Klicke nun nacheinander auf alle 10 Zehen.\n\nFange GANZ LINKS im Bild an und arbeite dich Zeh fuer Zeh nach GANZ RECHTS durch.")
+        self.display_image(self.cv_original)
+        self.status_var.set("Manueller Modus: Klicke nacheinander auf alle 10 Zehen (von links nach rechts).")
 
     def on_canvas_click(self, event):
         if not self.manual_mode or self.cv_original is None: return
-
-        # Sicherstellen, dass man nicht ausserhalb des Bildes klickt
-        if event.x >= self.cv_original.shape[1] or event.y >= self.cv_original.shape[0]: return
-
-        self.manual_clicks.append((event.x, event.y))
         
-        # Visuelles Feedback: Gelber Kreis an der geklickten Stelle
-        r = 5
-        self.canvas.create_oval(event.x-r, event.y-r, event.x+r, event.y+r, outline="yellow", width=2)
-
-        # Wenn 10 Zehen markiert wurden -> Analyse starten!
+        self.manual_clicks.append((event.x, event.y))
+        self.canvas.create_oval(event.x-4, event.y-4, event.x+4, event.y+4, fill="#ffcc00", outline="white")
+        
         if len(self.manual_clicks) == 10:
             self.manual_mode = False
             self.process_manual_clicks()
 
     def process_manual_clicks(self):
-        left_toes = []
-        right_toes = []
-
+        left_toes, right_toes = [], []
         for i, (x, y) in enumerate(self.manual_clicks):
-            # Wir spannen ein 20x20 Suchfenster um den Klick, um das exakte Temperatur-Zentrum zu finden
-            x_start, x_end = max(0, x - 10), min(self.cv_gray.shape[1], x + 10)
-            y_start, y_end = max(0, y - 10), min(self.cv_gray.shape[0], y + 10)
+            x_s, x_e = max(0, x-10), min(self.cv_gray.shape[1], x+10)
+            y_s, y_e = max(0, y-10), min(self.cv_gray.shape[0], y+10)
+            roi = self.cv_gray[y_s:y_e, x_s:x_e]
             
-            roi = self.cv_gray[y_start:y_end, x_start:x_end]
             if roi.size > 0:
-                _, max_val, _, max_loc_roi = cv2.minMaxLoc(roi)
-                temp = int(max_val)
-                meas_pt = (x_start + max_loc_roi[0], y_start + max_loc_roi[1])
+                _, max_val, _, max_loc = cv2.minMaxLoc(roi)
+                temp, meas_pt = int(max_val), (x_s + max_loc[0], y_s + max_loc[1])
             else:
-                temp = int(self.cv_gray[y, x])
-                meas_pt = (x, y)
+                temp, meas_pt = int(self.cv_gray[y, x]), (x, y)
 
             data = {"tip": (x, y), "temp": temp, "sensor": meas_pt}
-            
-            # Die ersten 5 Klicks sind der linke Fuss, die restlichen 5 der rechte
-            if i < 5:
-                left_toes.append(data)
-            else:
-                right_toes.append(data)
+            if i < 5: left_toes.append(data)
+            else: right_toes.append(data)
 
-        # Analyse auf einer sauberen Kopie ausfuehren
-        result_img = perform_bilateral_analysis(self.cv_original.copy(), left_toes, right_toes)
-        
+        result_img = perform_bilateral_analysis(self.cv_original.copy(), left_toes, right_toes, self.cv_gray)
         self.final_cv_image = result_img
         self.display_image(result_img)
         self.btn_pdf.config(state=tk.NORMAL)
-        messagebox.showinfo("Fertig", "Manuelle Analyse erfolgreich abgeschlossen!")
+        self.status_var.set("Manuelle Analyse abgeschlossen.")
 
     def save_pdf(self):
         if self.final_cv_image is None: return
-        save_path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF", "*.pdf")], title="Speichern")
-        if save_path:
+        path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF", "*.pdf")])
+        if path:
             img_rgb = cv2.cvtColor(self.final_cv_image, cv2.COLOR_BGR2RGB)
-            Image.fromarray(img_rgb).save(save_path, "PDF", resolution=100.0)
-            messagebox.showinfo("Erfolg", "PDF erfolgreich gespeichert!")
+            Image.fromarray(img_rgb).save(path, "PDF", resolution=100.0)
+            messagebox.showinfo("Erfolg", "Bericht wurde gespeichert.")
 
     def display_image(self, cv_img):
         img_rgb = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
         img_pil = Image.fromarray(img_rgb)
         self.img_tk = ImageTk.PhotoImage(image=img_pil)
-        
         self.canvas.delete("all")
-        # Bild oben links (0, 0) im Canvas verankern
         self.canvas.create_image(0, 0, anchor=tk.NW, image=self.img_tk)
 
 if __name__ == "__main__":
