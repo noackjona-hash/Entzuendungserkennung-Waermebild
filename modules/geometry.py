@@ -3,6 +3,9 @@ import numpy as np
 import math
 
 def analyze_shape_and_draw_skeleton(image, gray_img):
+    # Bildhöhe und -breite auslesen, um die Ränder zu kennen
+    img_h, img_w = gray_img.shape
+    
     _, mask = cv2.threshold(gray_img, 40, 255, cv2.THRESH_BINARY)
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -11,7 +14,6 @@ def analyze_shape_and_draw_skeleton(image, gray_img):
 
     contour = max(contours, key=cv2.contourArea)
 
-    # Schwerpunkt (Mitte der Hand) berechnen
     M = cv2.moments(contour)
     if M["m00"] != 0:
         cx = int(M["m10"] / M["m00"])
@@ -45,34 +47,42 @@ def analyze_shape_and_draw_skeleton(image, gray_img):
             else:
                 angle = 180
             
-            # Ein echtes Tal ist spitz (<= 90 Grad)
             if angle <= 90:
-                # NEU: Wir filtern den unteren Bildrand (Handgelenk) heraus.
-                # Punkte dürfen nicht extrem weit unter dem Schwerpunkt liegen.
                 if start[1] < cy + 80: tips.append(start)
                 if end[1] < cy + 80: tips.append(end)
 
-    # NEU: Distanz-Filter massiv verstärkt.
-    # Wir fassen Punkte zusammen, die bis zu 50 Pixel voneinander entfernt sind.
-    filtered_tips = []
+    # 1. NEUER FILTER: Rand-Rejektion (Border Rejection)
+    # Ignoriert Punkte, die extrem nah am Rand des Fotos sind (Messfehler)
+    margin = 20
+    tips_inside = []
     for tip in tips:
+        if tip[0] > margin and tip[0] < (img_w - margin) and tip[1] > margin and tip[1] < (img_h - margin):
+            tips_inside.append(tip)
+
+    # Distanz-Filter (doppelte Punkte zusammenfassen)
+    filtered_tips = []
+    for tip in tips_inside:
         is_new = True
         for ft in filtered_tips:
-            if math.sqrt((tip[0]-ft[0])**2 + (tip[1]-ft[1])**2) < 50:
+            if math.sqrt((tip[0]-ft[0])**2 + (tip[1]-ft[1])**2) < 40:
                 is_new = False
                 break
         if is_new:
             filtered_tips.append(tip)
 
-    # Sortieren von links nach rechts (x-Koordinate), das ist später nützlich!
+    # 2. NEUER FILTER: Top 5 Prinzip
+    # Wir sortieren die Punkte nach Y-Koordinate (Höhe). Das kleinste Y ist GANZ OBEN im Bild.
+    # Wir nehmen nur die obersten 5 Punkte.
+    filtered_tips = sorted(filtered_tips, key=lambda x: x[1])[:5]
+    
+    # Zum Schluss sortieren wir sie wieder von links nach rechts, das brauchen wir gleich
     filtered_tips = sorted(filtered_tips, key=lambda x: x[0])
 
-    # Skelett zeichnen
+    # Skelett einzeichnen
     for tip in filtered_tips:
         cv2.line(image, (cx, cy), tip, (0, 255, 255), 2)
         cv2.circle(image, tip, 6, (0, 0, 255), -1)
 
-    # Wenn wir 4 oder 5 Spitzen finden, ist es sicher eine Hand
     if len(filtered_tips) >= 4:
         erkennung = "Hand"
     else:
