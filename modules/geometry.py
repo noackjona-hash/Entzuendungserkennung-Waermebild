@@ -64,7 +64,7 @@ def analyze_shape_and_draw_skeleton(image, gray_img):
     for tip in tips_inside:
         is_new = True
         for ft in filtered_tips:
-            if math.sqrt((tip[0]-ft[0])**2 + (tip[1]-ft[1])**2) < 40:
+            if math.sqrt((tip[0]-ft[0])**2 + (tip[1]-ft[1])**2) < 80:
                 is_new = False
                 break
         if is_new:
