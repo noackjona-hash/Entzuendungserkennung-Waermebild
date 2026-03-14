@@ -1,22 +1,22 @@
 import cv2
 
-def get_toes_roi(gray_img):
-    """Sucht den gesamten Fuß und gibt das obere Viertel (die Zehen) als ROI zurück."""
-    # 1. Fuß vom Hintergrund trennen (alles, was wärmer als der sehr kalte Hintergrund ist)
-    _, foot_mask = cv2.threshold(gray_img, 40, 255, cv2.THRESH_BINARY)
+def get_extremities_roi(gray_img):
+    """Sucht die Hand oder den Fuß und gibt den oberen Teil (Finger/Zehen) als ROI zurück."""
+    # 1. Objekt vom Hintergrund trennen
+    _, body_mask = cv2.threshold(gray_img, 40, 255, cv2.THRESH_BINARY)
     
-    # 2. Umrisse (Konturen) finden
-    contours, _ = cv2.findContours(foot_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # 2. Umrisse finden
+    contours, _ = cv2.findContours(body_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
     if not contours:
         return None
         
-    # 3. Den größten Umriss nehmen (das ist garantiert der Fuß, nicht ein Staubkorn)
-    foot_contour = max(contours, key=cv2.contourArea)
-    fx, fy, fw, fh = cv2.boundingRect(foot_contour)
+    # 3. Den größten Umriss nehmen (die Hand oder den Fuß)
+    main_contour = max(contours, key=cv2.contourArea)
+    x, y, w, h = cv2.boundingRect(main_contour)
     
-    # 4. Das obere Viertel berechnen (25% der Gesamthöhe des Fußes)
-    toe_h = int(fh * 0.25)
+    # 4. Suchzone berechnen: Finger sind etwas länger als Zehen, 
+    # daher nehmen wir die oberen 30% des erkannten Objekts (statt 25%).
+    extremity_h = int(h * 0.30)
     
-    # Koordinaten (x, y, breite, höhe) der Zehen-Region zurückgeben
-    return (fx, fy, fw, toe_h)
+    return (x, y, w, extremity_h)
