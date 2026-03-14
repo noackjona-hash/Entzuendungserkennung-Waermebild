@@ -7,20 +7,38 @@ img_path = "inputimg/FussLinks.jpeg"
 original, gray = load_and_preprocess(img_path)
 
 if original is not None:
-    # 1. Smarte Maske erstellen
-    mask, max_val = apply_smart_heat_mask(gray, sensitivity=10)
+    print("--- Medizinisches Analyse-Tool ---")
+    print("1. Markiere mit der Maus das zu untersuchende Gelenk (z.B. den grossen Zeh).")
+    print("2. Druecke danach ENTER oder die LEERTASTE.")
     
-    # 2. Bounding Box finden
-    bbox = get_hotspot_bounding_box(mask)
+    # Nutzer wählt einen Bereich (Region of Interest = ROI) aus
+    roi = cv2.selectROI("Gelenk markieren", original, showCrosshair=True, fromCenter=False)
+    cv2.destroyWindow("Gelenk markieren")
     
-    if bbox:
-        x, y, w, h = bbox
-        # Grünes Rechteck ins Originalbild zeichnen
-        cv2.rectangle(original, (x, y), (x + w, y + h), (0, 255, 0), 3)
-        cv2.putText(original, "Hotspot erkannt", (x, y - 10), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+    x, y, w, h = roi
+    
+    # Nur weitermachen, wenn auch wirklich ein Bereich markiert wurde
+    if w > 0 and h > 0:
+        # Wir schneiden das Bild auf den markierten Bereich zu
+        roi_gray = gray[y:y+h, x:x+w]
+        
+        # Smarte Maske NUR auf das markierte Gelenk anwenden
+        # Da ein Zeh generell kälter ist, hilft diese lokale Analyse extrem!
+        mask, max_val = apply_smart_heat_mask(roi_gray, sensitivity=15)
+        
+        # Bounding Box im kleinen Ausschnitt finden
+        bbox = get_hotspot_bounding_box(mask)
+        
+        if bbox:
+            bx, by, bw, bh = bbox
+            # Rechteck an die richtige Stelle im Originalbild zeichnen
+            cv2.rectangle(original, (x + bx, y + by), (x + bx + bw, y + by + bh), (0, 255, 0), 2)
+            cv2.putText(original, "Gelenk-Entzuendung", (x, y - 10), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            
+            print(f"Hotspot im Gelenk gefunden! Lokaler Spitzenwert: {max_val}")
 
-    # Ergebnisse anzeigen
-    cv2.imshow("KI Erkennung", original)
+    # Endergebnis anzeigen
+    cv2.imshow("Gelenk-Analyse", original)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
