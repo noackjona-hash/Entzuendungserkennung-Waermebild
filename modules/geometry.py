@@ -1,4 +1,5 @@
 import cv2
+import numpy as np
 import math
 
 def find_both_feet(gray_img):
@@ -6,14 +7,14 @@ def find_both_feet(gray_img):
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
     if len(contours) < 2:
-        return None, None
+        return None, None, None
         
     sorted_contours = sorted(contours, key=cv2.contourArea, reverse=True)[:2]
     sorted_by_x = sorted(sorted_contours, key=lambda c: cv2.boundingRect(c)[0])
     
-    return sorted_by_x[0], sorted_by_x[1]
+    return sorted_by_x[0], sorted_by_x[1], mask
 
-def extract_toes_from_contour(contour, gray_img):
+def extract_toes_from_contour(contour, gray_img, foot_mask):
     M = cv2.moments(contour)
     cy = int(M["m01"] / M["m00"]) if M["m00"] != 0 else 0
 
@@ -37,11 +38,14 @@ def extract_toes_from_contour(contour, gray_img):
     for tip in merged_tips:
         x, y = tip
         x_start, x_end = max(0, x - 30), min(gray_img.shape[1], x + 30)
-        y_start, y_end = y, min(gray_img.shape[0], y + 60)
+        y_start, y_end = max(0, y - 10), min(gray_img.shape[0], y + 60)
         
-        roi = gray_img[y_start:y_end, x_start:x_end]
-        if roi.size > 0:
-            _, max_val, _, max_loc_roi = cv2.minMaxLoc(roi)
+        roi_gray = gray_img[y_start:y_end, x_start:x_end]
+        roi_mask = foot_mask[y_start:y_end, x_start:x_end] # Nur den echten Fuss betrachten
+        
+        if roi_gray.size > 0:
+            # Maskierte Suche: Ignoriert den Hintergrund komplett!
+            _, max_val, _, max_loc_roi = cv2.minMaxLoc(roi_gray, mask=roi_mask)
             temp = int(max_val)
             meas_pt = (x_start + max_loc_roi[0], y_start + max_loc_roi[1])
         else:
