@@ -132,8 +132,9 @@ Das grafische Benutzerinterface (Frontend) wurde vollumfänglich unter Verwendun
    git clone [https://github.com/noackjona-hash/Entzuendungserkennung-Waermebild.git](https://github.com/noackjona-hash/Entzuendungserkennung-Waermebild.git)
    cd Entzuendungserkennung-Waermebild
 
-2.1 **Virtuelle Umgebung erstellen & aktivieren**
-    Windows:
+2 **Virtuelle Umgebung erstellen & aktivieren**
+    
+2.1**Windows:**
     ```bash
     python -m venv .venv
     .venv\Scripts\activate```
@@ -143,14 +144,12 @@ Das grafische Benutzerinterface (Frontend) wurde vollumfänglich unter Verwendun
     python3 -m venv .venv
     source .venv/bin/activate ```
     
-    Abhängigkeiten installieren
-
-Bash
+3. **Abhängigkeiten installieren**
+ ```bash
 pip install -r requirements.txt
 Software starten
+```
 
-Bash
-python main.py
 🖥️ Bedienungsanleitung
 Bild laden: Wähle ein thermografisches Bild (Füße/Hände) aus.
 
