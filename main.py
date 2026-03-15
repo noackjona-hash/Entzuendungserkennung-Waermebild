@@ -3,6 +3,9 @@ from tkinter import filedialog, messagebox
 from PIL import Image, ImageTk
 import cv2
 import os
+import csv
+import shutil
+import time
 
 from modules.loader import load_and_preprocess
 from modules.geometry import find_both_feet, extract_toes_from_contour
@@ -13,7 +16,7 @@ class IgniteApp:
         self.root = root
         self.root.title("Ignite - Thermografische Entzuendungserkennung")
         self.root.geometry("1450x900")
-        self.root.configure(bg="#121212") # Noch tieferer Darkmode
+        self.root.configure(bg="#121212")
 
         self.current_image_path = None
         self.cv_original = None
@@ -24,7 +27,30 @@ class IgniteApp:
         self.manual_mode = False
         self.manual_clicks = []
         
+        # --- KI DATASET SETUP ---
+        self.dataset_dir = "dataset"
+        self.img_dir = os.path.join(self.dataset_dir, "images")
+        self.label_file = os.path.join(self.dataset_dir, "labels.csv")
+        self.init_dataset_structure()
+        
         self.setup_ui()
+
+    def init_dataset_structure(self):
+        """Erstellt die Ordnerstruktur fuer die KI-Trainingsdaten."""
+        if not os.path.exists(self.dataset_dir):
+            os.makedirs(self.dataset_dir)
+        if not os.path.exists(self.img_dir):
+            os.makedirs(self.img_dir)
+        # CSV Header schreiben, falls Datei neu ist
+        if not os.path.exists(self.label_file):
+            with open(self.label_file, mode='w', newline='') as file:
+                writer = csv.writer(file)
+                # Spalten: Dateiname, L_Zeh1_x, L_Zeh1_y ... R_Zeh5_x, R_Zeh5_y
+                header = ["filename"]
+                for side in ["L", "R"]:
+                    for i in range(1, 6):
+                        header.extend([f"{side}_Zeh{i}_x", f"{side}_Zeh{i}_y"])
+                writer.writerow(header)
 
     def setup_ui(self):
         header = tk.Frame(self.root, bg="#1e1e1e", height=80)
@@ -35,10 +61,13 @@ class IgniteApp:
         toolbar.pack(fill=tk.X)
 
         tk.Button(toolbar, text="📁 Bild laden", font=("Arial", 11), bg="#444444", fg="white", command=self.load_image, width=15).pack(side=tk.LEFT, padx=10)
-        self.btn_analyze = tk.Button(toolbar, text="⚡ Auto-Analyse (KI)", font=("Arial", 11, "bold"), bg="#007acc", fg="white", state=tk.DISABLED, command=self.run_analysis, width=18)
+        self.btn_analyze = tk.Button(toolbar, text="⚡ Auto-Analyse", font=("Arial", 11, "bold"), bg="#007acc", fg="white", state=tk.DISABLED, command=self.run_analysis, width=18)
         self.btn_analyze.pack(side=tk.LEFT, padx=10)
-        self.btn_manual = tk.Button(toolbar, text="🖱️ Manuell wählen", font=("Arial", 11), bg="#d4a017", fg="black", state=tk.DISABLED, command=self.start_manual_mode, width=15)
+        
+        # MANUELLER MODUS WIRD ZUM KI-TRAINER
+        self.btn_manual = tk.Button(toolbar, text="🖱️ Manuell & KI trainieren", font=("Arial", 11, "bold"), bg="#d4a017", fg="black", state=tk.DISABLED, command=self.start_manual_mode, width=22)
         self.btn_manual.pack(side=tk.LEFT, padx=10)
+        
         self.btn_pdf = tk.Button(toolbar, text="📄 PDF Bericht", font=("Arial", 11), bg="#b32400", fg="white", state=tk.DISABLED, command=self.save_pdf, width=15)
         self.btn_pdf.pack(side=tk.RIGHT, padx=10)
 
@@ -88,7 +117,7 @@ class IgniteApp:
 
     def run_analysis(self):
         if self.cv_original is None: return
-        self.status_var.set("Analysiere... Führe Otsu-Binarisierung und K-Means Machine Learning aus.")
+        self.status_var.set("K-Means Analyse laeuft...")
         self.root.update()
         
         left_contour, right_contour, foot_mask = find_both_feet(self.cv_gray)
@@ -99,11 +128,11 @@ class IgniteApp:
             if len(self.left_toes_cache) == 5 and len(self.right_toes_cache) == 5:
                 self.update_live_analysis()
                 self.btn_pdf.config(state=tk.NORMAL)
-                self.status_var.set("Erfolg: K-Means Clustering hat alle Regionen perfekt segmentiert.")
+                self.status_var.set("Auto-Analyse abgeschlossen.")
             else:
-                messagebox.showwarning("Hinweis", "Das KI-Modell konnte die Fusskante nicht eindeutig unterteilen. Bitte manuelle Auswahl nutzen.")
+                messagebox.showwarning("Fehler", "Auto-Algorithmus gescheitert. Bitte manuelle Auswahl nutzen.")
         else:
-            messagebox.showerror("Fehler", "Bildkontrast zu gering. Otsu-Segmentierung fehlgeschlagen.")
+            messagebox.showerror("Fehler", "Bildkontrast zu gering.")
 
     def update_live_analysis(self, *args):
         if not self.left_toes_cache or not self.right_toes_cache: return
@@ -125,13 +154,12 @@ class IgniteApp:
         self.left_toes_cache, self.right_toes_cache = [], []
         self.display_image(self.cv_original)
         self.clear_toe_list()
-        self.status_var.set("Manueller Modus: Markiere die 10 Zehen mit Fadenkreuz-Klicks.")
+        self.status_var.set("KI Datenerfassung: Markiere exakt die 10 Zehen (von links nach rechts).")
 
     def on_canvas_click(self, event):
         if not self.manual_mode or self.cv_original is None: return
         self.manual_clicks.append((event.x, event.y))
         
-        # Profi-Fadenkreuz beim manuellen Klicken
         cv2.drawMarker(self.cv_original, (event.x, event.y), (0, 255, 255), cv2.MARKER_CROSS, 10, 2)
         self.display_image(self.cv_original)
         
@@ -140,9 +168,8 @@ class IgniteApp:
             self.process_manual_clicks()
 
     def process_manual_clicks(self):
-        # Fussmaske neu berechnen fuer den Deep Sensor
         _, _, foot_mask = find_both_feet(self.cv_gray)
-        if foot_mask is None: foot_mask = np.ones_like(self.cv_gray) * 255 # Fallback
+        if foot_mask is None: foot_mask = np.ones_like(self.cv_gray) * 255 
         
         for i, (x, y) in enumerate(self.manual_clicks):
             x_s, x_e = max(0, x-15), min(self.cv_gray.shape[1], x+15)
@@ -160,9 +187,33 @@ class IgniteApp:
             if i < 5: self.left_toes_cache.append(data)
             else: self.right_toes_cache.append(data)
 
+        self.save_to_dataset() # NEU: KI Trainingsdaten speichern
         self.update_live_analysis()
         self.btn_pdf.config(state=tk.NORMAL)
-        self.status_var.set("Manuelle Sensor-Kalibrierung abgeschlossen.")
+        self.status_var.set("Manuelle Analyse beendet & Trainingsdaten fuer KI gespeichert!")
+
+    def save_to_dataset(self):
+        """Speichert das aktuelle Bild und die Klick-Koordinaten fuer das KI Training."""
+        if not self.current_image_path: return
+        
+        # Eindeutigen Dateinamen generieren (Timestamp)
+        timestamp = int(time.time())
+        original_ext = os.path.splitext(self.current_image_path)[1]
+        new_filename = f"train_img_{timestamp}{original_ext}"
+        new_filepath = os.path.join(self.img_dir, new_filename)
+        
+        # Bild in den Dataset Ordner kopieren
+        shutil.copy(self.current_image_path, new_filepath)
+        
+        # Koordinaten sammeln (alle 10 Klicks)
+        row_data = [new_filename]
+        for click in self.manual_clicks:
+            row_data.extend([click[0], click[1]])
+            
+        # In CSV schreiben
+        with open(self.label_file, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(row_data)
 
     def clear_toe_list(self):
         for widget in self.toe_list_frame.winfo_children(): widget.destroy()
