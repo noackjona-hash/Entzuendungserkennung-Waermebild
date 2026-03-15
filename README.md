@@ -1,212 +1,185 @@
-🔬 IGNITE - Clinical Thermography Pro
+# Wissenschaftliche Abhandlung über das System IGNITE: Eine hochspezialisierte Instrumentierung für die klinische Thermografie
 
-Jugend Forscht 2026 | Fachgebiet: Mathematik / Informatik / Technik
+**Wissenschaftliche Einreichung im Rahmen des Wettbewerbs Jugend Forscht 2026**
+**Fachdisziplin:** Mathematik / Informatik / Technik
+**Konzeptionelle und technische Realisierung:** Jona Noack (15 Jahre)
 
-Entwickelt von Jona Noack (15 Jahre)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![OpenCV](https://img.shields.io/badge/OpenCV-4.13-green.svg)](https://opencv.org/)
+[![Scikit-Learn](https://img.shields.io/badge/scikit--learn-Machine%20Learning-orange.svg)](https://scikit-learn.org/)
+[![CustomTkinter](https://img.shields.io/badge/GUI-CustomTkinter-darkblue.svg)](https://github.com/TomSchimansky/CustomTkinter)
 
-📑 Inhaltsverzeichnis
+---
 
-Projektübersicht (Abstract)
+## 📑 Inhaltsverzeichnis
 
-Problemstellung & Motivation
+1. [Projektübersicht (Abstract)](#1-projektübersicht-abstract)
+2. [Problemstellung und wissenschaftliche Motivation](#2-problemstellung-und-wissenschaftliche-motivation)
+3. [Theoretischer und medizinischer Hintergrund](#3-theoretischer-und-medizinischer-hintergrund)
+4. [Klinische Metriken und analytische Indizes](#4-klinische-metriken-und-analytische-indizes)
+5. [Systemarchitektur und algorithmische Methodik](#5-systemarchitektur-und-algorithmische-methodik)
+6. [Die Machine-Learning-Pipeline](#6-die-machine-learning-pipeline)
+7. [Applikationsspezifische Funktionalitäten (UI/UX)](#7-applikationsspezifische-funktionalitäten-uiux)
+8. [Installations- und Konfigurationsrichtlinien](#8-installations--und-konfigurationsrichtlinien)
+9. [Operationelle Bedienungsanleitung](#9-operationelle-bedienungsanleitung)
+10. [Strukturelle Organisation des Projekts](#10-strukturelle-organisation-des-projekts)
+11. [Perspektivische Entwicklungen (Ausblick)](#11-perspektivische-entwicklungen-ausblick)
 
-Wissenschaftlicher Hintergrund
+---
 
-Klinische Metriken & Indizes
+## 1. 💡 Projektübersicht (Abstract)
 
-Systemarchitektur & Algorithmen
+Bei dem vorliegenden System, designiert als **IGNITE**, handelt es sich um eine durch künstliche Intelligenz augmentierte, computergestützte diagnostische Apparatur (Computer-Aided Diagnosis, CAD). Die primäre teleologische Ausrichtung dieser Software liegt in der automatisierten Detektion, exakten Quantifizierung sowie der formalen Dokumentation inflammatorischer Prozesse an den distalen Extremitäten (ossa tarsi et metatarsi sowie ossa carpi et metacarpi) auf Basis von Infrarot-Thermografie.
 
-Die Machine Learning Pipeline
+Die softwareseitige Architektur implementiert modernste Verfahren der Computer Vision (unter Rückgriff auf die OpenCV-Bibliothek) zur Segmentierung thermaler Abbildungen. Ergänzt wird dies durch ein dediziert trainiertes Machine-Learning-Modell auf Basis einer Random-Forest-Regression, welches der präzisen Prädiktion anatomischer Charakteristika dient. Anstatt einer fehleranfälligen Evaluation absoluter Temperaturwerte wird durch das System IGNITE die **bilaterale Symmetrie** des Organismus analysiert. Entzündungsherde werden mittels selbst entwickelter, standardisierter Metriken, insbesondere dem *Thermal Divergence Index (TDI)*, quantifiziert. Die resultierenden diagnostischen Erhebungen werden in einem grafischen Interface visualisiert und können in Form eines formalen klinischen Berichtes exportiert werden.
 
-Software-Features (UI/UX)
+---
 
-Installation & Setup
+## 2. 🚨 Problemstellung und wissenschaftliche Motivation
 
-Bedienungsanleitung
+Physiologische Anomalien, wie sie durch Entzündungen, rheumatische Affektionen, traumatische Läsionen oder vaskuläre Insuffizienzen hervorgerufen werden, induzieren lokale Alterationen der metabolischen Aktivität. Diese Alterationen manifestieren sich in einer messbaren Modifikation der thermischen Emission der Dermis. Obgleich konventionelle Wärmebildkamerasysteme diese Emissionen visuell zugänglich machen, ist die rein optische, humanbasierte Evaluation jener Abbildungen durch gravierende Fehleranfälligkeiten gekennzeichnet:
 
-Projektstruktur
+* **Extrinsische Störfaktoren:** Die Raumtemperatur, Luftfeuchtigkeit sowie die thermale Kalibrierung der optischen Sensoren verfälschen die absolute Temperaturmessung in erheblichem Maße.
+* **Intrinsische, physiologische Varianz:** Es bedarf der Berücksichtigung interindividueller Varianzen hinsichtlich der basalen Körpertemperatur, insbesondere an den peripheren Extremitäten.
+* **Sensortechnische Limitationen:** Apparativ bedingtes Bildrauschen und optische Artefakte an den Konturrändern der Gliedmaßen erschweren die exakte Lokalisierung.
 
-Zukünftige Entwicklungen (Ausblick)
+**Die abgeleitete Lösungsstrategie:** Es bedurfte der Entwicklung einer automatisierten, streng referenzbasierten Auswertungsmethodik, bei welcher die thermale Signatur der gesunden, kontralateralen Extremität als absolute Vergleichsbasis (Baseline) für die vermutete pathologische Region herangezogen wird.
 
-1. 💡 Projektübersicht (Abstract)
+---
 
-Ignite ist ein KI-gestütztes, computerunterstütztes Diagnosesystem (CAD) zur Erkennung, Quantifizierung und Dokumentation von Entzündungen an den Extremitäten (Füße/Hände) mittels Infrarot-Thermografie.
+## 3. 🧬 Theoretischer und medizinischer Hintergrund
 
-Das System nutzt fortschrittliche Computer Vision (OpenCV) zur Bildsegmentierung und ein selbst trainiertes Machine-Learning-Modell (Random Forest Regressor) zur anatomischen Feature-Erkennung. Anstatt sich auf fehleranfällige absolute Temperaturwerte zu verlassen, berechnet Ignite die bilaterale Symmetrie des Körpers und quantifiziert Entzündungsherde über standardisierte, selbst entwickelte Metriken wie den Thermal Divergence Index (TDI). Die Ergebnisse werden in einer modernen Benutzeroberfläche visualisiert und können als professioneller klinischer PDF-Report exportiert werden.
+Eine essenzielle Prämisse der vorliegenden Methodik ist die Annahme, dass der unversehrte menschliche Organismus unter kontrollierten Umgebungsbedingungen eine signifikante thermale Symmetrie aufweist. Folglich müssen korrespondierende anatomische Strukturen der linken und rechten Körperhälfte (beispielsweise der linke und rechte Hallux) nahezu identische Temperaturprofile emittieren.
 
-2. 🚨 Problemstellung & Motivation
+Die Apparatur IGNITE operationalisiert das Paradigma der **bilateralsymmetrischen Thermografie**. Im Falle einer lokalen Inflammation resultiert eine gesteigerte Perfusion (Hyperämie) sowie eine erhöhte zelluläre Stoffwechselrate. Derartige pathologische Prozesse generieren eine quantifizierbare asymmetrische Temperaturdifferenz ($\Delta T$). Die algorithmische Evaluation identifiziert diese Asymmetrien auf mathematischem Wege und ist durch geeignete Filtermechanismen in der Lage, natürliche, irrelevante Varianzen zu eliminieren.
 
-Entzündungen, rheumatische Erkrankungen, Sportverletzungen oder Durchblutungsstörungen verändern den lokalen Stoffwechsel und damit die Wärmeabstrahlung der Haut. Herkömmliche Wärmebildkameras machen dies zwar sichtbar, jedoch ist die menschliche (optische) Auswertung stark fehleranfällig:
+---
 
-Umgebungseinflüsse: Raumtemperatur und Kamera-Kalibrierung verfälschen absolute Messwerte (z.B. 32°C).
+## 4. 📊 Klinische Metriken und analytische Indizes
 
-Physiologische Varianz: Manche Patienten haben von Natur aus kältere Extremitäten als andere.
+Zur Gewährleistung einer objektiven Datengrundlage für medizinisches Fachpersonal errechnet die Systemarchitektur in Echtzeit vier fundamentale, diagnostische Metriken:
 
-Bildrauschen: Unpräzise Sensoren erzeugen "Ghosting" oder Rauschen an den Rändern der Gliedmaßen.
+### Thermal Divergence Index (TDI)
+Der TDI dient der Standardisierung der Temperaturdifferenz, vollkommen unabhängig von den apparativen Spezifikationen der genutzten Infrarotkamera oder der applizierten Farbpalette. Der Index reflektiert die prozentuale thermale Diskrepanz zwischen der linken und rechten Körperhälfte.
+* **Mathematische Formulierung:** $TDI = \left( \frac{|T_{left} - T_{right}|}{T_{max\_sensor}} \right) \times 100$
+* **Klinische Schwellenwerte:** Ein TDI > 8% indiziert einen pathologischen Verdachtsmoment, ein TDI > 15% qualifiziert sich als schwerwiegender Befund. Diese Schwellenwerte unterliegen der manuellen Kalibrierbarkeit durch den Operateur.
 
-Die Lösung: Eine automatisierte, referenzbasierte Auswertung, die den gesunden Fuß/die gesunde Hand als absolute Baseline für den erkrankten Bereich nutzt.
+### Foot Asymmetry Index (FAI)
+Während der TDI auf isolierte distale Phalanxen fokussiert ist, quantifiziert der FAI die systemische thermale Verteilung über die gesamte Extremität. Hierfür wird das arithmetische Mittel aller bilateralen Paare gebildet. Eine erhebliche FAI-Elevation (> 10%) lässt sich korrelativ eher mit systemischen Vaskulopathien (z.B. der peripheren arteriellen Verschlusskrankheit) in Verbindung bringen als mit streng lokalisierten Inflammationen.
 
-3. 🧬 Wissenschaftlicher Hintergrund
+### Hotspot Area (Pixel-Fläche)
+Diese Metrik kalkuliert die exakte räumliche Ausdehnung des thermischen Herdes. Unter Zuhilfenahme einer adaptiven Binarisierung werden ausschließlich jene Pixel aggregiert, deren thermale Intensität innerhalb der obersten 10% des identifizierten lokalen Temperaturmaximums rangiert.
 
-Der menschliche Körper weist im gesunden Zustand eine bemerkenswerte thermische Symmetrie auf. Das bedeutet, dass der linke und rechte Körperteil (z.B. der linke und rechte große Zeh) unter gleichen Umgebungsbedingungen nahezu identische Temperaturen aufweisen.
+### Thermischer Gradient ($\nabla T$)
+Der Gradient quantifiziert die Steilheit des Temperaturabfalls vom Epizentrum der Inflammation hin zum umliegenden, unversehrten Gewebe.
+* **Diagnostische Implikation:** Ein abrupter, steiler Gradient lässt auf eine akute, fokal begrenzte Entzündungsprozession schließen (bspw. Unguis incarnatus). Ein flacher Gradient hingegen suggeriert eine diffus ausgedehnte, chronische Entzündung oder Durchblutungsanomalie.
 
-Ignite nutzt das Prinzip der Bilateralsymmetrischen Thermografie. Tritt eine lokale Entzündung auf, steigt die Durchblutung (Hyperämie) und Gewebeaktivität an. Dies führt zu einer messbaren asymmetrischen Temperaturdifferenz ($\Delta T$). Die Software identifiziert diese Asymmetrien mathematisch und filtert natürliche Varianzen heraus.
+---
 
-4. 📊 Klinische Metriken & Indizes
+## 5. ⚙️ Systemarchitektur und algorithmische Methodik
 
-Um Ärzten und Diagnostikern objektive Daten zu liefern, berechnet das System in Echtzeit vier Kernmetriken:
+Die konzeptionelle Architektur der Software ist von einer strikten Modularität geprägt, um eine Höchstmaß an Performanz und künftiger Erweiterbarkeit (Maintainability) zu sichern.
 
-Thermal Divergence Index (TDI)
+1. **Preprocessing (`loader.py`):** Es erfolgt ein sicheres, fehlerresistentes Einlesen der Thermogramme über NumPy-basierte Byte-Streams. Dieses Vorgehen eliminiert systemimmanente Restriktionen (beispielsweise Inkompatibilitäten von OpenCV mit spezifischen Zeichenkodierungen). Im Anschluss wird eine Transformation in monochromatische Intensitätsmatrizen vorgenommen.
+2. **Segmentierung (`geometry.py`):** * Zunächst wird ein **Gaußscher Weichzeichner (Gaussian Blur)** appliziert, um hochfrequente Störsignale zu dämpfen.
+   * Anschließend erfolgt eine **Adaptive Otsu-Binarisierung**. Dieses stochastische Verfahren berechnet vollautomatisch den optimalen Schwellenwert zur Separation des biologischen Gewebes vom Hintergrund.
+   * Der Segmentierungsprozess wird durch morphologische Operationen (Opening und Closing) zur Bereinigung etwaiger Vakanzen in der Binärmaske komplettiert.
+3. **Deep-Sensor-Algorithmus:** Statt einer rudimentären Kantendetektion platziert das System dynamische Regionen von besonderem Interesse (Region of Interests, ROIs) um die prädizierten anatomischen Zentren. Innerhalb dieser Maskierungen wird tiefgreifend nach der absoluten maximalen thermalen Intensität gesucht.
 
-Der TDI standardisiert die Temperaturdifferenz unabhängig vom Kameratyp oder der gewählten Farbpalette. Er gibt die prozentuale Abweichung zwischen der linken und rechten Seite an.
+---
 
-Formel: $TDI = \left( \frac{|T_{left} - T_{right}|}{T_{max\_sensor}} \right) \times 100$
+## 6. 🧠 Die Machine-Learning-Pipeline
 
-Klinische Schwelle: > 8% (Verdacht), > 15% (Schwerer Befund). Einstellbar in der GUI.
+Zur Gewährleistung einer robusten Identifikation der zehn Phalangen – selbst bei Vorliegen komplexer Varianzen wie eng anliegenden Zehen oder invertierten Ausrichtungen – wurde eine umfassende Pipeline auf Basis des überwachten Lernens (Supervised Learning) konstruiert:
 
-Foot Asymmetry Index (FAI)
+### 1. Rapid Annotation (`annotate_dataset.py`)
+Es wurde ein dediziertes Softwarewerkzeug entwickelt, welches die zeitnahe, manuelle Annotation beträchtlicher Volumina an Wärmebildern ermöglicht. Die resultierenden geometrischen Koordinaten werden strukturiert in einer CSV-Datenbank (`labels.csv`) persistiert.
 
-Während der TDI einzelne Zehen betrachtet, bewertet der FAI die systemische Durchblutung des gesamten Fußes, indem er den Durchschnitt aller Extremitätenpaare bildet. Ein hoher FAI (> 10%) deutet eher auf eine generelle Gefäßerkrankung (z.B. pAVK) als auf eine lokale Entzündung hin.
+### 2. Data Augmentation (`augment_data.py`)
+Zur Prävention von Overfitting und zur signifikanten Steigerung der Modelltoleranz wird der initiale Datensatz algorithmisch um ein Vielfaches potenziert:
+* **Affine Transformationen:** Mathematische Rotation der Abbildungen in einem Spektrum von -15° bis +15°, einhergehend mit einer matrixbasierten Rekalkulation sämtlicher Annotationskoordinaten.
+* **Intensitätsmodulationen:** Algorithmische Variation von Luminanz und Kontrast zur künstlichen Simulation abweichender Umgebungstemperaturen.
 
-Hotspot Area (Fläche)
+### 3. Merkmalsextraktion und Modelltraining (`train_ai.py`)
+Die geometrische Konstitution der Extremitäten wird über die Berechnung von **Hu-Momenten** (sieben translations-, rotations- und skalierungsinvariante Kennzahlen) parametrisiert. Auf Basis dieser Parameter wird ein **Random-Forest-Regressor** (unter Einsatz von 100 Estimators) trainiert. Das Modell erlernt die nicht-lineare Abbildung von globalen morphologischen Merkmalen auf die exakten relativen Koordinaten der distalen Extremitäten.
 
-Berechnet die exakte Pixelanzahl des Entzündungsherdes. Hierbei werden durch adaptive Binarisierung nur jene Pixel gezählt, die sich innerhalb der obersten 10% des lokalen Temperaturmaximums befinden.
+### 4. KI-Inferenz und Fallback-Mechanismus
+Während des operativen Betriebs prädiziert das trainierte Modell die anatomischen Koordinaten in Bruchteilen einer Sekunde. Sollte die Konfidenz der Prädiktion aufgrund gravierender Bildanomalien unterschritten werden, initiiert die Systemarchitektur automatisch einen manuellen Kalibrierungsmodus.
 
-Thermischer Gradient ($\nabla T$)
+---
 
-Der Gradient beschreibt, wie abrupt die Temperatur vom Zentrum der Entzündung zum gesunden Gewebe hin abfällt.
+## 7. 🖥️ Applikationsspezifische Funktionalitäten (UI/UX)
 
-Bedeutung: Ein steiler Abfall deutet auf eine akute, scharf umrissene Entzündung hin (z.B. ein eingewachsener Nagel). Ein flacher Abfall weist auf eine großflächige, chronische Entzündung oder Durchblutungsstörung hin.
+Das grafische Benutzerinterface (Frontend) wurde vollumfänglich unter Verwendung der Bibliothek **CustomTkinter** realisiert, um zeitgemäßen Standards der User Experience zu entsprechen:
 
-5. ⚙️ Systemarchitektur & Algorithmen
+* **Dark-Mode-Interface:** Reduzierung der visuellen Ermüdung des Operateurs bei der Nutzung in abgedunkelten medizinischen Räumlichkeiten.
+* **Dynamische Parameteranpassung:** Eine latenzfreie Modifikation der TDI-Schwellenwerte via Schieberegler ist implementiert. Die Aktualisierung der visuellen und tabellarischen Auswertung erfolgt in Echtzeit.
+* **Reiterbasierte Navigation (Tab-System):** Eine rigorose strukturelle Trennung zwischen der visuellen Befunddarstellung, der Darlegung roher Messdaten und der softwareseitigen Konfiguration.
+* **Automatisierte Reportgenerierung (`fpdf`):** Auf Anforderung erzeugt das System ein formalisiertes, mehrseitiges PDF-Dokument. Dieses umfasst die berechneten Metriken, den ermittelten FAI sowie das visualisierte Thermogramm, um eine nahtlose Integration in die digitale Patientenakte zu gewährleisten.
 
-Die Software-Architektur ist streng modular aufgebaut, um maximale Performance und Wartbarkeit zu garantieren.
+---
 
-Preprocessing (loader.py): Sicheres Einlesen der Thermogramme über NumPy-Byte-Streams, um Pfad-Probleme (z.B. Windows-Umlaute) in OpenCV zu umgehen. Konvertierung in Graustufen-Wärmemaps.
+## 8. 🛠️ Installations- und Konfigurationsrichtlinien
 
-Segmentierung (geometry.py): * Anwendung eines Gaussian Blur zur Rauschunterdrückung.
+### Systemvoraussetzungen
+* Betriebssystem: Microsoft Windows 10/11, macOS oder eine kompatible Linux-Distribution
+* Laufzeitumgebung: Python in Version 3.10 oder einer aktuelleren Iteration
 
-Adaptive Otsu-Binarisierung zur vollautomatischen Ermittlung des optimalen Schwellenwerts für die Hintergrundtrennung.
+### Instruktionen zur Implementierung
 
-Morphologische Operationen (Open/Close) zum Schließen von Maskenlücken.
+1. **Klonen des Repositories**
+   ```bash
+   git clone [https://github.com/noackjona-hash/Entzuendungserkennung-Waermebild.git](https://github.com/noackjona-hash/Entzuendungserkennung-Waermebild.git)
+   cd Entzuendungserkennung-Waermebild
 
-Deep Sensor Algorithmus: Anstatt blind die Kanten der Füße abzutasten, legt das System dynamische Region of Interests (ROIs) um die anatomischen Zentren und sucht maskiert nach dem absoluten thermischen Spitzenwert im tiefen Gewebe.
+2. **Virtuelle Umgebung erstellen & aktivieren**
+    Windows:
+    ```bash
+    python -m venv .venv
+    .venv\Scripts\activate```
 
-6. 🧠 Die Machine Learning Pipeline
+    MacOS / Linux:
+    ```bash
+    python3 -m venv .venv
+    source .venv/bin/activate ```
+    
+    Abhängigkeiten installieren
 
-Um die 10 Zehen/Finger in Bildern mit hoher Varianz (aneinanderliegende Zehen, invertierte Fußstellung) robust zu erkennen, wurde eine vollständige Supervised Learning Pipeline entwickelt:
-
-1. Rapid Annotation (annotate_dataset.py)
-
-Ein eigens entwickeltes Tool, um in Sekunden große Mengen an Wärmebildern manuell zu annotieren und die Koordinaten in einer labels.csv zu speichern.
-
-2. Data Augmentation (augment_data.py)
-
-Um Overfitting zu vermeiden und die Robustheit zu steigern, wird das initiale Datenset algorithmisch um ein Vielfaches vergrößert:
-
-Affine Transformationen: Rotation der Bilder (-15° bis +15°) inklusive matrix-basierter Neuberechnung der Annotationen.
-
-Intensitätsverschiebungen: Simulation von Umgebungstemperaturschwankungen durch Helligkeits- und Kontrastanpassungen.
-
-3. Feature Extraktion & Training (train_ai.py)
-
-Die Formen der Füße werden durch Hu-Moments (7 translations- und rotationsinvariante Momente) beschrieben. Ein Random Forest Regressor (100 Estimators) wird trainiert, um von diesen globalen Form-Features auf die relativen Koordinaten der 5 Extremitäten zu schließen.
-
-4. KI-Inferenz & Fallback
-
-In der Hauptanwendung sagt das Modell die Koordinaten in Millisekunden voraus. Schlägt die Inferenz aufgrund von zu starker Bildabweichung fehl, springt das System in den manuellen Fallback-Modus.
-
-7. 🖥️ Software-Features (UI/UX)
-
-Das Frontend wurde komplett in CustomTkinter realisiert, um modernste UX-Standards zu erfüllen:
-
-Dark-Mode UI: Ermüdungsfreies Arbeiten in medizinischen Umgebungen.
-
-Live-Parameter Tuning: Echtzeit-Anpassung der TDI-Schwellenwerte via Slider. Das Bild und die Tabellen aktualisieren sich in Millisekunden.
-
-Tab-System: Saubere Trennung zwischen Bild-Visualisierung, rohen Daten-Metriken und Einstellungen.
-
-Klinischer PDF-Report (fpdf): Mit einem Klick generiert Ignite einen mehrseitigen, druckfertigen Diagnosebericht inkl. Metriken, FAI und visualisiertem Wärmebild zur Ablage in der Patientenakte.
-
-8. 🛠️ Installation & Setup
-
-Systemanforderungen
-
-OS: Windows 10/11, macOS, oder Linux
-
-Python: Version 3.10 oder höher
-
-Schritt-für-Schritt Anleitung
-
-Repository klonen
-
-git clone [https://github.com/noackjona-hash/Entzuendungserkennung-Waermebild.git](https://github.com/noackjona-hash/Entzuendungserkennung-Waermebild.git)
-cd Entzuendungserkennung-Waermebild
-
-
-Virtuelle Umgebung erstellen & aktivieren
-
-Windows:
-
-python -m venv .venv
-.venv\Scripts\activate
-
-
-MacOS / Linux:
-
-python3 -m venv .venv
-source .venv/bin/activate
-
-
-Abhängigkeiten installieren
-
+Bash
 pip install -r requirements.txt
-
-
 Software starten
 
+Bash
 python main.py
+🖥️ Bedienungsanleitung
+Bild laden: Wähle ein thermografisches Bild (Füße/Hände) aus.
 
+Deep Scan (KI): Klicke auf diesen Button, um die Machine-Learning-Inferenz zu starten. Die Software segmentiert das Bild automatisch.
 
-9. 📖 Bedienungsanleitung
+Manuelle Messung (Fallback): Sollte die Ausrichtung des Bildes stark von den Trainingsdaten abweichen, können die 10 Messpunkte per Fadenkreuz manuell gesetzt werden.
 
-Wärmebild laden: Klicke in der Seitenleiste auf Bild laden und wähle dein Thermogramm (.jpg, .png).
+Einstellungen: Wechsle in den Tab "Einstellungen", um die Sensibilität des Algorithmus anzupassen (Live-Update des Bildes).
 
-Deep Scan (KI): Klicke auf Auto-Analyse. Das ML-Modell identifiziert die Messpunkte, und der Deep Sensor analysiert das Gewebe.
+PDF Export: Klicke in der Seitenleiste auf "Klinischen Report (PDF)", um den Befund abzuspeichern.
 
-Ergebnisse prüfen: Im Reiter Visualisierung siehst du farbcodierte Bounding-Boxen (Rot = Schwer, Orange = Verdacht). Im Reiter Detail-Analyse findest du alle rohen Messwerte und Gradienten.
+🏗️ Architektur & Module
+main.py: Controller & CustomTkinter GUI.
 
-Parameter anpassen: Im Reiter Einstellungen können die Toleranzgrenzen des Algorithmus stufenlos reguliert werden.
+modules/loader.py: Sicheres Einlesen von Bildern via NumPy (Bypass für OpenCV-Umlaut-Bugs).
 
-Report exportieren: Klicke unten links auf PDF Bericht, um die Sitzung zu dokumentieren.
+modules/geometry.py: Computer Vision, Hu-Moments und KI-Inferenz.
 
-Hinweis zum KI-Training: Eigene Modelle können trainiert werden, indem Bilder über annotate_dataset.py gelabelt, mit augment_data.py erweitert und durch train_ai.py in das System kompiliert werden.
+modules/analysis.py: Berechnung von TDI, Area, Gradient und FAI sowie Rendering der Overlays.
 
-10. 📂 Projektstruktur
+train_ai.py / augment_data.py: Skripte zur Pflege des ML-Modells.
 
-Ignite-Thermography/
-├── main.py                   # Hauptapplikation & CustomTkinter GUI
-├── annotate_dataset.py       # Tool zur schnellen manuellen Datenerfassung
-├── augment_data.py           # Skript zur Datensatz-Vermehrung (Rotation/Helligkeit)
-├── train_ai.py               # ML-Training (Random Forest) Skript
-├── requirements.txt          # Python-Abhängigkeiten
-├── dataset/
-│   ├── ignite_ai_model.pkl   # Trainiertes Machine-Learning Modell
-│   ├── labels.csv            # Annotations-Datenbank
-│   └── images/               # Ordner für Trainingsbilder
-└── modules/
-    ├── __init__.py
-    ├── loader.py             # Sicheres Image-Loading (NumPy-Bypass)
-    ├── geometry.py           # Computer Vision, Otsu, Hu-Moments & ML-Inferenz
-    └── analysis.py           # Berechnung von TDI, Area, Gradient & Rendering
+🔭 Ausblick
+Für zukünftige Versionen ist geplant:
 
+Unterstützung für DICOM-Dateien (medizinischer Bildstandard).
 
-11. 🔮 Zukünftige Entwicklungen (Ausblick)
+Integration eines Convolutional Neural Networks (CNN) zur pixelgenauen semantischen Segmentierung.
 
-DICOM-Support: Nativer Support für medizinische Bilddatenformate (Digital Imaging and Communications in Medicine).
+Live-Video-Feed-Analyse direkt über angeschlossene FLIR-Wärmebildkameras.
 
-Deep Learning Segmentierung: Integration eines U-Net oder Mask R-CNN Architektur zur pixelgenauen Erkennung von Fuß- und Handgeometrien anstelle von Bounding Box Regression.
-
-Live-Video-Feed: Echtzeit-Analyse direkt über via USB/WLAN verbundene FLIR-Wärmebildkameras (Real-Time Tracking).
-
-Jugend Forscht 2026 - Innovation in der digitalen Medizintechnik. © Jona Noack
+Jugend Forscht 2026 - Innovation in der digitalen Medizintechnik.
