@@ -135,12 +135,12 @@ Das grafische Benutzerinterface (Frontend) wurde vollumfänglich unter Verwendun
 2 **Virtuelle Umgebung erstellen & aktivieren**
     
 2.1 **Windows:**
-    ```bash
+    ```
     python -m venv .venv
     .venv\Scripts\activate```
 
 2.2 **MacOS / Linux:**
-    ```bash
+    ```
     python3 -m venv .venv
     source .venv/bin/activate ```
 
