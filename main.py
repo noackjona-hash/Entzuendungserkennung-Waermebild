@@ -8,13 +8,13 @@ import shutil
 import time
 
 from modules.loader import load_and_preprocess
-from modules.geometry import find_both_feet, extract_toes_from_contour
+from modules.geometry import find_both_feet, extract_toes_with_ai
 from modules.analysis import perform_bilateral_analysis
 
 class IgniteApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Ignite - Thermografische Entzuendungserkennung")
+        self.root.title("Ignite - KI-gestützte Entzuendungserkennung")
         self.root.geometry("1450x900")
         self.root.configure(bg="#121212")
 
@@ -27,7 +27,6 @@ class IgniteApp:
         self.manual_mode = False
         self.manual_clicks = []
         
-        # --- KI DATASET SETUP ---
         self.dataset_dir = "dataset"
         self.img_dir = os.path.join(self.dataset_dir, "images")
         self.label_file = os.path.join(self.dataset_dir, "labels.csv")
@@ -36,38 +35,29 @@ class IgniteApp:
         self.setup_ui()
 
     def init_dataset_structure(self):
-        """Erstellt die Ordnerstruktur fuer die KI-Trainingsdaten."""
-        if not os.path.exists(self.dataset_dir):
-            os.makedirs(self.dataset_dir)
-        if not os.path.exists(self.img_dir):
-            os.makedirs(self.img_dir)
-        # CSV Header schreiben, falls Datei neu ist
+        if not os.path.exists(self.dataset_dir): os.makedirs(self.dataset_dir)
+        if not os.path.exists(self.img_dir): os.makedirs(self.img_dir)
         if not os.path.exists(self.label_file):
             with open(self.label_file, mode='w', newline='') as file:
                 writer = csv.writer(file)
-                # Spalten: Dateiname, L_Zeh1_x, L_Zeh1_y ... R_Zeh5_x, R_Zeh5_y
                 header = ["filename"]
                 for side in ["L", "R"]:
-                    for i in range(1, 6):
-                        header.extend([f"{side}_Zeh{i}_x", f"{side}_Zeh{i}_y"])
+                    for i in range(1, 6): header.extend([f"{side}_Zeh{i}_x", f"{side}_Zeh{i}_y"])
                 writer.writerow(header)
 
     def setup_ui(self):
         header = tk.Frame(self.root, bg="#1e1e1e", height=80)
         header.pack(fill=tk.X)
-        tk.Label(header, text="IGNITE DIAGNOSE-SYSTEM", font=("Segoe UI", 24, "bold"), bg="#1e1e1e", fg="#00ccff").pack(pady=10)
+        tk.Label(header, text="IGNITE DIAGNOSE-SYSTEM (KI & TDI)", font=("Segoe UI", 24, "bold"), bg="#1e1e1e", fg="#00ccff").pack(pady=10)
 
         toolbar = tk.Frame(self.root, bg="#2b2b2b", pady=10)
         toolbar.pack(fill=tk.X)
 
         tk.Button(toolbar, text="📁 Bild laden", font=("Arial", 11), bg="#444444", fg="white", command=self.load_image, width=15).pack(side=tk.LEFT, padx=10)
-        self.btn_analyze = tk.Button(toolbar, text="⚡ Auto-Analyse", font=("Arial", 11, "bold"), bg="#007acc", fg="white", state=tk.DISABLED, command=self.run_analysis, width=18)
+        self.btn_analyze = tk.Button(toolbar, text="🧠 Auto-Analyse (KI)", font=("Arial", 11, "bold"), bg="#007acc", fg="white", state=tk.DISABLED, command=self.run_analysis, width=20)
         self.btn_analyze.pack(side=tk.LEFT, padx=10)
-        
-        # MANUELLER MODUS WIRD ZUM KI-TRAINER
-        self.btn_manual = tk.Button(toolbar, text="🖱️ Manuell & KI trainieren", font=("Arial", 11, "bold"), bg="#d4a017", fg="black", state=tk.DISABLED, command=self.start_manual_mode, width=22)
+        self.btn_manual = tk.Button(toolbar, text="🖱️ Manuell / KI trainieren", font=("Arial", 11, "bold"), bg="#d4a017", fg="black", state=tk.DISABLED, command=self.start_manual_mode, width=22)
         self.btn_manual.pack(side=tk.LEFT, padx=10)
-        
         self.btn_pdf = tk.Button(toolbar, text="📄 PDF Bericht", font=("Arial", 11), bg="#b32400", fg="white", state=tk.DISABLED, command=self.save_pdf, width=15)
         self.btn_pdf.pack(side=tk.RIGHT, padx=10)
 
@@ -97,7 +87,7 @@ class IgniteApp:
         self.toe_list_frame = tk.Frame(sidebar, bg="#1e1e1e")
         self.toe_list_frame.pack(expand=True, fill=tk.BOTH, padx=10)
 
-        self.status_var = tk.StringVar(value="System bereit.")
+        self.status_var = tk.StringVar(value="System bereit. Lade ein Wärmebild.")
         tk.Label(self.root, textvariable=self.status_var, bd=0, bg="#2b2b2b", fg="#00ffcc", font=("Arial", 10)).pack(side=tk.BOTTOM, fill=tk.X, ipady=3)
 
     def load_image(self):
@@ -113,26 +103,32 @@ class IgniteApp:
                 self.btn_manual.config(state=tk.NORMAL)
                 self.btn_pdf.config(state=tk.DISABLED)
                 self.clear_toe_list()
-                self.status_var.set("Bild geladen. Bereit für Analyse.")
+                self.status_var.set("Bild bereit. Klicke auf Auto-Analyse für KI-Auswertung.")
 
     def run_analysis(self):
         if self.cv_original is None: return
-        self.status_var.set("K-Means Analyse laeuft...")
+        self.status_var.set("Berechne Hu-Moments und lade Machine Learning Modell...")
         self.root.update()
         
         left_contour, right_contour, foot_mask = find_both_feet(self.cv_gray)
         if left_contour is not None and right_contour is not None:
-            self.left_toes_cache = extract_toes_from_contour(left_contour, self.cv_gray, foot_mask)
-            self.right_toes_cache = extract_toes_from_contour(right_contour, self.cv_gray, foot_mask)
+            # Hier greift nun die echte KI ein!
+            self.left_toes_cache = extract_toes_with_ai(left_contour, self.cv_gray, foot_mask)
+            self.right_toes_cache = extract_toes_with_ai(right_contour, self.cv_gray, foot_mask)
             
+            if self.left_toes_cache is None or self.right_toes_cache is None:
+                messagebox.showwarning("Modell fehlt", "Kein trainiertes KI-Modell gefunden. Bitte markiere zunächst Bilder manuell und trainiere die KI über 'train_ai.py'.")
+                self.status_var.set("Warte auf manuelle Eingabe / KI Training.")
+                return
+                
             if len(self.left_toes_cache) == 5 and len(self.right_toes_cache) == 5:
                 self.update_live_analysis()
                 self.btn_pdf.config(state=tk.NORMAL)
-                self.status_var.set("Auto-Analyse abgeschlossen.")
+                self.status_var.set("Erfolg: Random Forest Modell hat die Anatomie analysiert.")
             else:
-                messagebox.showwarning("Fehler", "Auto-Algorithmus gescheitert. Bitte manuelle Auswahl nutzen.")
+                messagebox.showwarning("Hinweis", "KI konnte nicht alle Zehen sicher zuordnen. Bitte manuelle Auswahl nutzen.")
         else:
-            messagebox.showerror("Fehler", "Bildkontrast zu gering.")
+            messagebox.showerror("Fehler", "Bildkontrast zu gering für Otsu-Segmentierung.")
 
     def update_live_analysis(self, *args):
         if not self.left_toes_cache or not self.right_toes_cache: return
@@ -187,30 +183,22 @@ class IgniteApp:
             if i < 5: self.left_toes_cache.append(data)
             else: self.right_toes_cache.append(data)
 
-        self.save_to_dataset() # NEU: KI Trainingsdaten speichern
+        self.save_to_dataset() 
         self.update_live_analysis()
         self.btn_pdf.config(state=tk.NORMAL)
         self.status_var.set("Manuelle Analyse beendet & Trainingsdaten fuer KI gespeichert!")
 
     def save_to_dataset(self):
-        """Speichert das aktuelle Bild und die Klick-Koordinaten fuer das KI Training."""
         if not self.current_image_path: return
-        
-        # Eindeutigen Dateinamen generieren (Timestamp)
         timestamp = int(time.time())
         original_ext = os.path.splitext(self.current_image_path)[1]
         new_filename = f"train_img_{timestamp}{original_ext}"
         new_filepath = os.path.join(self.img_dir, new_filename)
         
-        # Bild in den Dataset Ordner kopieren
         shutil.copy(self.current_image_path, new_filepath)
-        
-        # Koordinaten sammeln (alle 10 Klicks)
         row_data = [new_filename]
-        for click in self.manual_clicks:
-            row_data.extend([click[0], click[1]])
+        for click in self.manual_clicks: row_data.extend([click[0], click[1]])
             
-        # In CSV schreiben
         with open(self.label_file, mode='a', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(row_data)
