@@ -1,95 +1,127 @@
-import tkinter as tk
+import customtkinter as ctk
 from tkinter import filedialog, messagebox
 from PIL import Image, ImageTk
 import cv2
 import os
-import csv
-import shutil
-import time
+import numpy as np
+from datetime import datetime
+from fpdf import FPDF
 
 from modules.loader import load_and_preprocess
 from modules.geometry import find_both_feet, extract_toes_with_ai
-from modules.analysis import perform_bilateral_analysis
+from modules.analysis import perform_deep_analysis
 
-class IgniteApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Ignite - KI-gestützte Entzuendungserkennung")
-        self.root.geometry("1450x900")
-        self.root.configure(bg="#121212")
+ctk.set_appearance_mode("Dark")
+ctk.set_default_color_theme("blue")
+
+class IgniteApp(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+        self.title("IGNITE - Clinical Thermography Pro")
+        self.geometry("1500x950")
+        self.minsize(1200, 800)
 
         self.current_image_path = None
         self.cv_original = None
         self.cv_gray = None
+        self.foot_mask = None
         self.final_cv_image = None
         self.left_toes_cache = []
         self.right_toes_cache = []
+        self.analysis_results = []
         self.manual_mode = False
         self.manual_clicks = []
         
-        self.dataset_dir = "dataset"
-        self.img_dir = os.path.join(self.dataset_dir, "images")
-        self.label_file = os.path.join(self.dataset_dir, "labels.csv")
-        self.init_dataset_structure()
-        
         self.setup_ui()
 
-    def init_dataset_structure(self):
-        if not os.path.exists(self.dataset_dir): os.makedirs(self.dataset_dir)
-        if not os.path.exists(self.img_dir): os.makedirs(self.img_dir)
-        if not os.path.exists(self.label_file):
-            with open(self.label_file, mode='w', newline='') as file:
-                writer = csv.writer(file)
-                header = ["filename"]
-                for side in ["L", "R"]:
-                    for i in range(1, 6): header.extend([f"{side}_Zeh{i}_x", f"{side}_Zeh{i}_y"])
-                writer.writerow(header)
-
     def setup_ui(self):
-        header = tk.Frame(self.root, bg="#1e1e1e", height=80)
-        header.pack(fill=tk.X)
-        tk.Label(header, text="IGNITE DIAGNOSE-SYSTEM (KI & TDI)", font=("Segoe UI", 24, "bold"), bg="#1e1e1e", fg="#00ccff").pack(pady=10)
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(1, weight=1)
 
-        toolbar = tk.Frame(self.root, bg="#2b2b2b", pady=10)
-        toolbar.pack(fill=tk.X)
+        # --- SEITENLEISTE ---
+        self.sidebar_frame = ctk.CTkFrame(self, width=280, corner_radius=0)
+        self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
+        self.sidebar_frame.grid_rowconfigure(6, weight=1)
 
-        tk.Button(toolbar, text="📁 Bild laden", font=("Arial", 11), bg="#444444", fg="white", command=self.load_image, width=15).pack(side=tk.LEFT, padx=10)
-        self.btn_analyze = tk.Button(toolbar, text="🧠 Auto-Analyse (KI)", font=("Arial", 11, "bold"), bg="#007acc", fg="white", state=tk.DISABLED, command=self.run_analysis, width=20)
-        self.btn_analyze.pack(side=tk.LEFT, padx=10)
-        self.btn_manual = tk.Button(toolbar, text="🖱️ Manuell / KI trainieren", font=("Arial", 11, "bold"), bg="#d4a017", fg="black", state=tk.DISABLED, command=self.start_manual_mode, width=22)
-        self.btn_manual.pack(side=tk.LEFT, padx=10)
-        self.btn_pdf = tk.Button(toolbar, text="📄 PDF Bericht", font=("Arial", 11), bg="#b32400", fg="white", state=tk.DISABLED, command=self.save_pdf, width=15)
-        self.btn_pdf.pack(side=tk.RIGHT, padx=10)
+        ctk.CTkLabel(self.sidebar_frame, text="IGNITE", font=ctk.CTkFont(size=36, weight="bold"), text_color="#00ccff").grid(row=0, column=0, padx=20, pady=(30, 0))
+        ctk.CTkLabel(self.sidebar_frame, text="Pro Diagnostics Edition", font=ctk.CTkFont(size=14)).grid(row=1, column=0, padx=20, pady=(0, 30))
 
-        main_container = tk.Frame(self.root, bg="#121212")
-        main_container.pack(expand=True, fill=tk.BOTH, padx=20, pady=10)
+        self.btn_load = ctk.CTkButton(self.sidebar_frame, text="📁 Wärmebild laden", command=self.load_image, height=45, font=ctk.CTkFont(size=14))
+        self.btn_load.grid(row=2, column=0, padx=20, pady=10)
 
-        self.canvas = tk.Canvas(main_container, bg="#000000", highlightthickness=1, highlightbackground="#333333", cursor="crosshair")
-        self.canvas.pack(side=tk.LEFT, expand=True, fill=tk.BOTH)
+        self.btn_analyze = ctk.CTkButton(self.sidebar_frame, text="🧠 Deep Scan (KI)", command=self.run_analysis, height=45, font=ctk.CTkFont(size=14, weight="bold"), state="disabled")
+        self.btn_analyze.grid(row=3, column=0, padx=20, pady=10)
+
+        self.btn_manual = ctk.CTkButton(self.sidebar_frame, text="🖱️ Manuelle Messung", command=self.start_manual_mode, height=45, font=ctk.CTkFont(size=14), state="disabled", fg_color="#d4a017", hover_color="#b38600")
+        self.btn_manual.grid(row=4, column=0, padx=20, pady=10)
+
+        self.btn_pdf = ctk.CTkButton(self.sidebar_frame, text="📄 Klinischen Report (PDF)", command=self.generate_pdf_report, height=45, font=ctk.CTkFont(size=14, weight="bold"), state="disabled", fg_color="#b32400", hover_color="#801a00")
+        self.btn_pdf.grid(row=5, column=0, padx=20, pady=40)
+
+        # --- HAUPTBEREICH (Tabs) ---
+        self.tabview = ctk.CTkTabview(self)
+        self.tabview.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
+        self.tabview.add("Visualisierung")
+        self.tabview.add("Detail-Analyse")
+        self.tabview.add("Einstellungen")
+
+        self.setup_visual_tab()
+        self.setup_details_tab()
+        self.setup_settings_tab()
+
+    def setup_visual_tab(self):
+        tab = self.tabview.tab("Visualisierung")
+        tab.grid_rowconfigure(0, weight=1)
+        tab.grid_columnconfigure(0, weight=1)
+
+        import tkinter as tk
+        self.canvas_frame = ctk.CTkFrame(tab)
+        self.canvas_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+        self.canvas = tk.Canvas(self.canvas_frame, bg="#0d0d0d", highlightthickness=0, cursor="crosshair")
+        self.canvas.pack(expand=True, fill=tk.BOTH, padx=2, pady=2)
         self.canvas.bind("<Button-1>", self.on_canvas_click)
 
-        sidebar = tk.Frame(main_container, bg="#1e1e1e", width=380, highlightthickness=1, highlightbackground="#333333")
-        sidebar.pack(side=tk.RIGHT, fill=tk.Y, padx=(20, 0))
+        self.status_label = ctk.CTkLabel(tab, text="System initialisiert. Lade ein Bild.", text_color="#00ffcc", font=ctk.CTkFont(size=14))
+        self.status_label.grid(row=1, column=0, sticky="w", padx=15, pady=5)
 
-        tk.Label(sidebar, text="DIAGNOSE-PARAMETER (TDI)", font=("Arial", 12, "bold"), bg="#1e1e1e", fg="#00ccff").pack(pady=(15, 5))
+    def setup_details_tab(self):
+        tab = self.tabview.tab("Detail-Analyse")
+        tab.grid_rowconfigure(0, weight=1)
+        tab.grid_columnconfigure(0, weight=1)
         
-        self.warn_slider = tk.Scale(sidebar, from_=2.0, to=20.0, resolution=0.5, orient=tk.HORIZONTAL, label="Verdacht ab (TDI %):", bg="#1e1e1e", fg="white", highlightthickness=0, command=self.update_live_analysis)
-        self.warn_slider.set(8.0)
-        self.warn_slider.pack(fill=tk.X, padx=15)
+        self.scroll_frame = ctk.CTkScrollableFrame(tab, fg_color="#1a1a1a")
+        self.scroll_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        
+        ctk.CTkLabel(self.scroll_frame, text="KLINISCHE ROHDATEN & METRIKEN", font=ctk.CTkFont(size=20, weight="bold"), text_color="#00ccff").pack(pady=20)
+        
+        self.result_text = ctk.CTkTextbox(self.scroll_frame, font=ctk.CTkFont(family="Consolas", size=14), height=600, wrap="none", fg_color="#121212")
+        self.result_text.pack(expand=True, fill="both", padx=20, pady=10)
+        self.result_text.configure(state="disabled")
 
-        self.severe_slider = tk.Scale(sidebar, from_=10.0, to=40.0, resolution=0.5, orient=tk.HORIZONTAL, label="Schwer ab (TDI %):", bg="#1e1e1e", fg="white", highlightthickness=0, command=self.update_live_analysis)
-        self.severe_slider.set(15.0)
-        self.severe_slider.pack(fill=tk.X, padx=15)
+    def setup_settings_tab(self):
+        tab = self.tabview.tab("Einstellungen")
+        
+        ctk.CTkLabel(tab, text="Klinische Schwellenwerte (TDI %)", font=ctk.CTkFont(size=18, weight="bold")).pack(pady=(20, 10), anchor="w", padx=30)
+        
+        self.lbl_warn = ctk.CTkLabel(tab, text="Verdacht ab (TDI %): 8.0")
+        self.lbl_warn.pack(anchor="w", padx=30)
+        self.slider_warn = ctk.CTkSlider(tab, from_=2.0, to=20.0, number_of_steps=36, command=self.on_slider_change)
+        self.slider_warn.set(8.0)
+        self.slider_warn.pack(fill="x", padx=30, pady=(0, 20))
 
-        tk.Frame(sidebar, bg="#444444", height=1).pack(fill=tk.X, pady=15, padx=15)
+        self.lbl_severe = ctk.CTkLabel(tab, text="Schwer ab (TDI %): 15.0")
+        self.lbl_severe.pack(anchor="w", padx=30)
+        self.slider_severe = ctk.CTkSlider(tab, from_=10.0, to=40.0, number_of_steps=60, command=self.on_slider_change)
+        self.slider_severe.set(15.0)
+        self.slider_severe.pack(fill="x", padx=30, pady=(0, 20))
 
-        tk.Label(sidebar, text="WISSENSCHAFTLICHE DATEN", font=("Arial", 12, "bold"), bg="#1e1e1e", fg="white").pack(pady=5)
-        self.toe_list_frame = tk.Frame(sidebar, bg="#1e1e1e")
-        self.toe_list_frame.pack(expand=True, fill=tk.BOTH, padx=10)
+    def on_slider_change(self, value):
+        self.lbl_warn.configure(text=f"Verdacht ab (TDI %): {self.slider_warn.get():.1f}")
+        self.lbl_severe.configure(text=f"Schwer ab (TDI %): {self.slider_severe.get():.1f}")
+        if self.final_cv_image is not None and not self.manual_mode:
+            self.update_live_analysis()
 
-        self.status_var = tk.StringVar(value="System bereit. Lade ein Wärmebild.")
-        tk.Label(self.root, textvariable=self.status_var, bd=0, bg="#2b2b2b", fg="#00ffcc", font=("Arial", 10)).pack(side=tk.BOTTOM, fill=tk.X, ipady=3)
-
+    # --- LOGIK ---
     def load_image(self):
         file_path = filedialog.askopenfilename(filetypes=[("Thermal Images", "*.jpg *.jpeg *.png")])
         if file_path:
@@ -99,49 +131,45 @@ class IgniteApp:
             
             if self.cv_original is not None:
                 self.display_image(self.cv_original)
-                self.btn_analyze.config(state=tk.NORMAL)
-                self.btn_manual.config(state=tk.NORMAL)
-                self.btn_pdf.config(state=tk.DISABLED)
-                self.clear_toe_list()
-                self.status_var.set("Bild bereit. Klicke auf Auto-Analyse für KI-Auswertung.")
+                self.btn_analyze.configure(state="normal")
+                self.btn_manual.configure(state="normal")
+                self.btn_pdf.configure(state="disabled")
+                self.status_label.configure(text="Bereit für den Deep Scan.")
 
     def run_analysis(self):
         if self.cv_original is None: return
-        self.status_var.set("Berechne Hu-Moments und lade Machine Learning Modell...")
-        self.root.update()
+        self.status_label.configure(text="Extrahierte Merkmale... KI-Modell analysiert...")
+        self.update()
         
         left_contour, right_contour, foot_mask = find_both_feet(self.cv_gray)
+        self.foot_mask = foot_mask
+        
         if left_contour is not None and right_contour is not None:
-            # Hier greift nun die echte KI ein!
             self.left_toes_cache = extract_toes_with_ai(left_contour, self.cv_gray, foot_mask)
             self.right_toes_cache = extract_toes_with_ai(right_contour, self.cv_gray, foot_mask)
             
-            if self.left_toes_cache is None or self.right_toes_cache is None:
-                messagebox.showwarning("Modell fehlt", "Kein trainiertes KI-Modell gefunden. Bitte markiere zunächst Bilder manuell und trainiere die KI über 'train_ai.py'.")
-                self.status_var.set("Warte auf manuelle Eingabe / KI Training.")
-                return
-                
-            if len(self.left_toes_cache) == 5 and len(self.right_toes_cache) == 5:
+            if self.left_toes_cache and len(self.left_toes_cache) == 5:
                 self.update_live_analysis()
-                self.btn_pdf.config(state=tk.NORMAL)
-                self.status_var.set("Erfolg: Random Forest Modell hat die Anatomie analysiert.")
+                self.btn_pdf.configure(state="normal")
+                self.status_label.configure(text="Erfolg: Umfassende Diagnose abgeschlossen.")
             else:
-                messagebox.showwarning("Hinweis", "KI konnte nicht alle Zehen sicher zuordnen. Bitte manuelle Auswahl nutzen.")
+                messagebox.showwarning("Hinweis", "KI-Zuordnung unsicher. Nutze die manuelle Messung.")
         else:
-            messagebox.showerror("Fehler", "Bildkontrast zu gering für Otsu-Segmentierung.")
+            messagebox.showerror("Fehler", "Füße nicht segmentierbar.")
 
-    def update_live_analysis(self, *args):
+    def update_live_analysis(self):
         if not self.left_toes_cache or not self.right_toes_cache: return
-        
-        warn_th = self.warn_slider.get()
-        severe_th = self.severe_slider.get()
+        warn_th, severe_th = self.slider_warn.get(), self.slider_severe.get()
         
         img_copy = self.cv_original.copy()
-        final_image, results = perform_bilateral_analysis(img_copy, self.left_toes_cache, self.right_toes_cache, warn_th, severe_th)
+        if self.foot_mask is None: self.foot_mask = np.ones_like(self.cv_gray)*255
+        
+        final_image, results = perform_deep_analysis(img_copy, self.left_toes_cache, self.right_toes_cache, self.cv_gray, self.foot_mask, warn_th, severe_th)
         
         self.final_cv_image = final_image
+        self.analysis_results = results
         self.display_image(final_image)
-        self.update_toe_list(results, warn_th, severe_th)
+        self.populate_details_tab(results)
 
     def start_manual_mode(self):
         if self.cv_original is None: return
@@ -149,29 +177,26 @@ class IgniteApp:
         self.manual_clicks = []
         self.left_toes_cache, self.right_toes_cache = [], []
         self.display_image(self.cv_original)
-        self.clear_toe_list()
-        self.status_var.set("KI Datenerfassung: Markiere exakt die 10 Zehen (von links nach rechts).")
+        self.status_label.configure(text="Manuell: Markiere alle 10 Zehen (von links nach rechts).")
 
     def on_canvas_click(self, event):
         if not self.manual_mode or self.cv_original is None: return
         self.manual_clicks.append((event.x, event.y))
-        
         cv2.drawMarker(self.cv_original, (event.x, event.y), (0, 255, 255), cv2.MARKER_CROSS, 10, 2)
         self.display_image(self.cv_original)
-        
         if len(self.manual_clicks) == 10:
             self.manual_mode = False
             self.process_manual_clicks()
 
     def process_manual_clicks(self):
-        _, _, foot_mask = find_both_feet(self.cv_gray)
-        if foot_mask is None: foot_mask = np.ones_like(self.cv_gray) * 255 
-        
+        _, _, self.foot_mask = find_both_feet(self.cv_gray)
+        if self.foot_mask is None: self.foot_mask = np.ones_like(self.cv_gray) * 255 
+        r = 20
         for i, (x, y) in enumerate(self.manual_clicks):
-            x_s, x_e = max(0, x-15), min(self.cv_gray.shape[1], x+15)
-            y_s, y_e = max(0, y-15), min(self.cv_gray.shape[0], y+15)
+            x_s, x_e = max(0, x-r), min(self.cv_gray.shape[1], x+r)
+            y_s, y_e = max(0, y-r), min(self.cv_gray.shape[0], y+r)
             roi_gray = self.cv_gray[y_s:y_e, x_s:x_e]
-            roi_mask = foot_mask[y_s:y_e, x_s:x_e]
+            roi_mask = self.foot_mask[y_s:y_e, x_s:x_e]
             
             if roi_gray.size > 0:
                 _, max_val, _, max_loc = cv2.minMaxLoc(roi_gray, mask=roi_mask)
@@ -183,61 +208,98 @@ class IgniteApp:
             if i < 5: self.left_toes_cache.append(data)
             else: self.right_toes_cache.append(data)
 
-        self.save_to_dataset() 
         self.update_live_analysis()
-        self.btn_pdf.config(state=tk.NORMAL)
-        self.status_var.set("Manuelle Analyse beendet & Trainingsdaten fuer KI gespeichert!")
+        self.btn_pdf.configure(state="normal")
+        self.status_label.configure(text="Manuelle Messung abgeschlossen.")
 
-    def save_to_dataset(self):
-        if not self.current_image_path: return
-        timestamp = int(time.time())
-        original_ext = os.path.splitext(self.current_image_path)[1]
-        new_filename = f"train_img_{timestamp}{original_ext}"
-        new_filepath = os.path.join(self.img_dir, new_filename)
+    def populate_details_tab(self, results):
+        self.result_text.configure(state="normal")
+        self.result_text.delete("1.0", "end")
         
-        shutil.copy(self.current_image_path, new_filepath)
-        row_data = [new_filename]
-        for click in self.manual_clicks: row_data.extend([click[0], click[1]])
-            
-        with open(self.label_file, mode='a', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow(row_data)
-
-    def clear_toe_list(self):
-        for widget in self.toe_list_frame.winfo_children(): widget.destroy()
-
-    def update_toe_list(self, results, warn_th, severe_th):
-        self.clear_toe_list()
-        tk.Label(self.toe_list_frame, text="Zeh | Temp L | Temp R | TDI (%)", font=("Arial", 11, "bold"), bg="#1e1e1e", fg="#aaaaaa").pack(anchor=tk.W, pady=(0, 10))
+        fai = results[0]["fai"] if results else 0
         
-        toe_names = ["Kl. Zeh", "Zeh 4  ", "Mittel ", "Zeh 2  ", "Gr. Zeh"]
+        report = f"=================================================================================\n"
+        report += f" IGNITE CLINICAL THERMOGRAPHY REPORT\n"
+        report += f" Datum: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        report += f"=================================================================================\n\n"
+        
+        report += f"GLOBALE METRIKEN:\n"
+        report += f"-----------------\n"
+        report += f"Fuss-Asymmetrie-Index (FAI): {fai}%\n"
+        report += f"(Ein FAI > 10% deutet auf systematische Durchblutungsstoerungen hin)\n\n"
+        
+        report += f"LOKALE ZEHEN-ANALYSE:\n"
+        report += f"{'-'*85}\n"
+        report += f"{'Zeh':<10} | {'Status':<10} | {'TDI':<7} | {'Temp L':<7} | {'Temp R':<7} | {'Area L/R (px)':<15} | {'Grad L/R'}\n"
+        report += f"{'-'*85}\n"
+        
+        toe_names = ["Kl. Zeh", "Zeh 4", "Mittelzeh", "Zeh 2", "Gr. Zeh"]
 
-        for i, res in enumerate(results):
-            tdi = res["tdi"]
-            t_l, t_r = res["temp_l"], res["temp_r"]
+        for res in results:
+            name = toe_names[res["toe_index"]]
+            area_str = f"{res['area_l']}/{res['area_r']}"
+            grad_str = f"{res['grad_l']}/{res['grad_r']}"
             
-            if tdi >= severe_th: color = "#ff4444"
-            elif tdi >= warn_th: color = "#ffaa00"
-            else: color = "#00ff00"
-            
-            tk.Label(self.toe_list_frame, text=f"{toe_names[i]}: {t_l:3} | {t_r:3} | {tdi:>5.2f}%", font=("Consolas", 14), bg="#1e1e1e", fg=color).pack(anchor=tk.W, pady=4)
+            report += f"{name:<10} | {res['status']:<10} | {res['tdi']:>6.2f}% | {res['t_l']:<7} | {res['t_r']:<7} | {area_str:<15} | {grad_str}\n"
 
-    def save_pdf(self):
-        if self.final_cv_image is None: return
-        path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF", "*.pdf")])
-        if path:
-            img_rgb = cv2.cvtColor(self.final_cv_image, cv2.COLOR_BGR2RGB)
-            Image.fromarray(img_rgb).save(path, "PDF", resolution=100.0)
-            messagebox.showinfo("Erfolg", "Wissenschaftlicher PDF-Bericht gespeichert.")
+        report += f"\n\nERKLÄRUNG DER METRIKEN:\n"
+        report += f"TDI (Thermal Divergence Index): Prozentuale Abweichung der Temperatur zwischen Links und Rechts.\n"
+        report += f"Area (Hotspot Fläche): Anzahl der stark erhitzten Pixel im Messbereich.\n"
+        report += f"Gradient (Abfall): Temperaturdifferenz vom Zentrum zum Rand (hoher Wert = akute, scharfe Entzündung).\n"
+
+        self.result_text.insert("end", report)
+        self.result_text.configure(state="disabled")
+
+    def generate_pdf_report(self):
+        if not self.analysis_results or self.final_cv_image is None: return
+        
+        save_path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF", "*.pdf")], initialfile=f"Ignite_Report_{datetime.now().strftime('%Y%m%d')}.pdf")
+        if not save_path: return
+
+        # Temporaeres Bild speichern fuer PDF
+        temp_img_path = "temp_report_img.jpg"
+        cv2.imwrite(temp_img_path, self.final_cv_image)
+
+        try:
+            pdf = FPDF()
+            pdf.add_page()
+            
+            # Header
+            pdf.set_font("Arial", 'B', 20)
+            pdf.cell(200, 10, txt="IGNITE DIAGNOSTICS - THERMAL REPORT", ln=True, align='C')
+            pdf.set_font("Arial", '', 10)
+            pdf.cell(200, 10, txt=f"Erstellt am: {datetime.now().strftime('%d.%m.%Y %H:%M')}", ln=True, align='C')
+            pdf.ln(10)
+
+            # Bild einfuegen
+            pdf.image(temp_img_path, x=15, w=180)
+            pdf.ln(120) # Platz lassen
+
+            # Tabelle / Daten
+            pdf.set_font("Courier", '', 10)
+            
+            # Hole den exakten Text aus dem Text-Feld
+            report_text = self.result_text.get("1.0", "end-1c")
+            
+            for line in report_text.split('\n'):
+                # Umlaute fuer FPDF bereinigen
+                safe_line = line.replace('ä', 'ae').replace('ö', 'oe').replace('ü', 'ue').replace('Ä', 'Ae').replace('Ö', 'Oe').replace('Ü', 'Ue').replace('ß', 'ss')
+                pdf.cell(200, 5, txt=safe_line, ln=True)
+
+            pdf.output(save_path)
+            messagebox.showinfo("Erfolg", f"Hochprofessioneller Medizin-Report wurde gespeichert unter:\n{save_path}")
+        except Exception as e:
+            messagebox.showerror("Fehler", f"Konnte PDF nicht erstellen: {str(e)}")
+        finally:
+            if os.path.exists(temp_img_path): os.remove(temp_img_path)
 
     def display_image(self, cv_img):
         img_rgb = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
         img_pil = Image.fromarray(img_rgb)
-        self.img_tk = ImageTk.PhotoImage(image=img_pil)
+        self.tk_img = ImageTk.PhotoImage(image=img_pil)
         self.canvas.delete("all")
-        self.canvas.create_image(0, 0, anchor=tk.NW, image=self.img_tk)
+        self.canvas.create_image(0, 0, anchor="nw", image=self.tk_img)
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = IgniteApp(root)
-    root.mainloop()
+    app = IgniteApp()
+    app.mainloop()
