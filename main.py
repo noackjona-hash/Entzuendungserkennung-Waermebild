@@ -2,7 +2,6 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 from PIL import Image, ImageTk
 import cv2
-import numpy as np
 import os
 
 from modules.loader import load_and_preprocess
@@ -13,7 +12,7 @@ class IgniteApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Ignite - Thermografische Entzuendungserkennung")
-        self.root.geometry("1400x900")
+        self.root.geometry("1450x900")
         self.root.configure(bg="#1e1e1e")
 
         self.current_image_path = None
@@ -28,12 +27,10 @@ class IgniteApp:
         self.setup_ui()
 
     def setup_ui(self):
-        # Header
         header = tk.Frame(self.root, bg="#2b2b2b", height=80)
         header.pack(fill=tk.X)
-        tk.Label(header, text="IGNITE DIAGNOSE-SYSTEM", font=("Segoe UI", 24, "bold"), bg="#2b2b2b", fg="#00ccff").pack(pady=10)
+        tk.Label(header, text="IGNITE DIAGNOSE-SYSTEM (TDI-Messung)", font=("Segoe UI", 24, "bold"), bg="#2b2b2b", fg="#00ccff").pack(pady=10)
 
-        # Toolbar
         toolbar = tk.Frame(self.root, bg="#333333", pady=10)
         toolbar.pack(fill=tk.X)
 
@@ -45,7 +42,6 @@ class IgniteApp:
         self.btn_pdf = tk.Button(toolbar, text="📄 PDF Bericht", font=("Arial", 11), bg="#b32400", fg="white", state=tk.DISABLED, command=self.save_pdf, width=15)
         self.btn_pdf.pack(side=tk.RIGHT, padx=10)
 
-        # Main Layout
         main_container = tk.Frame(self.root, bg="#1e1e1e")
         main_container.pack(expand=True, fill=tk.BOTH, padx=20, pady=10)
 
@@ -53,25 +49,23 @@ class IgniteApp:
         self.canvas.pack(side=tk.LEFT, expand=True, fill=tk.BOTH)
         self.canvas.bind("<Button-1>", self.on_canvas_click)
 
-        # Rechte Seitenleiste (Messwerte & Parameter)
-        sidebar = tk.Frame(main_container, bg="#2b2b2b", width=300)
+        sidebar = tk.Frame(main_container, bg="#2b2b2b", width=380)
         sidebar.pack(side=tk.RIGHT, fill=tk.Y, padx=(20, 0))
 
-        # Dynamische Parameter Slider
-        tk.Label(sidebar, text="KLINISCHE PARAMETER", font=("Arial", 12, "bold"), bg="#2b2b2b", fg="#00ccff").pack(pady=(10, 5))
+        tk.Label(sidebar, text="TDI SCHWELLENWERTE", font=("Arial", 12, "bold"), bg="#2b2b2b", fg="#00ccff").pack(pady=(10, 5))
         
-        self.warn_slider = tk.Scale(sidebar, from_=5, to=30, orient=tk.HORIZONTAL, label="Verdacht ab (\u0394 T):", bg="#2b2b2b", fg="white", highlightthickness=0, command=self.update_live_analysis)
-        self.warn_slider.set(15)
+        # Slider sind jetzt auf TDI (0-100) kalibriert
+        self.warn_slider = tk.Scale(sidebar, from_=2.0, to=20.0, resolution=0.5, orient=tk.HORIZONTAL, label="Verdacht ab (TDI):", bg="#2b2b2b", fg="white", highlightthickness=0, command=self.update_live_analysis)
+        self.warn_slider.set(7.5)
         self.warn_slider.pack(fill=tk.X, padx=10)
 
-        self.severe_slider = tk.Scale(sidebar, from_=20, to=80, orient=tk.HORIZONTAL, label="Schwer ab (\u0394 T):", bg="#2b2b2b", fg="white", highlightthickness=0, command=self.update_live_analysis)
-        self.severe_slider.set(30)
+        self.severe_slider = tk.Scale(sidebar, from_=10.0, to=40.0, resolution=0.5, orient=tk.HORIZONTAL, label="Schwer ab (TDI):", bg="#2b2b2b", fg="white", highlightthickness=0, command=self.update_live_analysis)
+        self.severe_slider.set(15.0)
         self.severe_slider.pack(fill=tk.X, padx=10)
 
         tk.Frame(sidebar, bg="#555555", height=2).pack(fill=tk.X, pady=15, padx=10)
 
-        # Tabellen-Bereich
-        tk.Label(sidebar, text="MESSWERTE", font=("Arial", 12, "bold"), bg="#2b2b2b", fg="white").pack(pady=5)
+        tk.Label(sidebar, text="WISSENSCHAFTLICHE AUSWERTUNG", font=("Arial", 12, "bold"), bg="#2b2b2b", fg="white").pack(pady=5)
         self.toe_list_frame = tk.Frame(sidebar, bg="#2b2b2b")
         self.toe_list_frame.pack(expand=True, fill=tk.BOTH, padx=10)
 
@@ -95,6 +89,8 @@ class IgniteApp:
 
     def run_analysis(self):
         if self.cv_original is None: return
+        self.status_var.set("Signalverarbeitung laeuft... (Suche nach thermischen Peaks)")
+        self.root.update()
         
         left_contour, right_contour, foot_mask = find_both_feet(self.cv_gray)
         if left_contour is not None and right_contour is not None:
@@ -104,25 +100,24 @@ class IgniteApp:
             if len(self.left_toes_cache) == 5 and len(self.right_toes_cache) == 5:
                 self.update_live_analysis()
                 self.btn_pdf.config(state=tk.NORMAL)
-                self.status_var.set("Auto-Analyse erfolgreich.")
+                self.status_var.set("Auto-Analyse mit Signalverarbeitung erfolgreich abgeschlossen.")
             else:
-                messagebox.showwarning("Hinweis", "Zehen nicht perfekt erkannt. Bitte manuelle Auswahl nutzen.")
+                messagebox.showwarning("Hinweis", f"SciPy konnte nicht exakt 10 Zehen finden (L:{len(self.left_toes_cache)}, R:{len(self.right_toes_cache)}).\nBitte manuelle Auswahl nutzen.")
         else:
-            messagebox.showerror("Fehler", "Füße konnten nicht getrennt werden.")
+            messagebox.showerror("Fehler", "Fuesse konnten nicht segmentiert werden.")
 
     def update_live_analysis(self, *args):
-        # Wird ausgefuehrt, wenn die Slider bewegt werden (Live-Update)
         if not self.left_toes_cache or not self.right_toes_cache: return
         
         warn_th = self.warn_slider.get()
         severe_th = self.severe_slider.get()
         
         img_copy = self.cv_original.copy()
-        final_image, delta_ts = perform_bilateral_analysis(img_copy, self.left_toes_cache, self.right_toes_cache, warn_th, severe_th)
+        final_image, results = perform_bilateral_analysis(img_copy, self.left_toes_cache, self.right_toes_cache, warn_th, severe_th)
         
         self.final_cv_image = final_image
         self.display_image(final_image)
-        self.update_toe_list(delta_ts, warn_th, severe_th)
+        self.update_toe_list(results, warn_th, severe_th)
 
     def start_manual_mode(self):
         if self.cv_original is None: return
@@ -165,24 +160,21 @@ class IgniteApp:
     def clear_toe_list(self):
         for widget in self.toe_list_frame.winfo_children(): widget.destroy()
 
-    def update_toe_list(self, delta_ts, warn_th, severe_th):
+    def update_toe_list(self, results, warn_th, severe_th):
         self.clear_toe_list()
-        tk.Label(self.toe_list_frame, text="Zeh | Temp L | Temp R | \u0394 T", font=("Arial", 10, "bold"), bg="#2b2b2b", fg="#aaaaaa").pack(anchor=tk.W, pady=(0, 5))
+        tk.Label(self.toe_list_frame, text="Zeh | Temp L | Temp R | TDI", font=("Arial", 11, "bold"), bg="#2b2b2b", fg="#aaaaaa").pack(anchor=tk.W, pady=(0, 5))
         
         toe_names = ["Kl. Zeh", "Zeh 4  ", "Mittel ", "Zeh 2  ", "Gr. Zeh"]
-        r_toes_disp = list(reversed(self.right_toes_cache))
 
-        for i in range(5):
-            t_l = self.left_toes_cache[i]["temp"]
-            t_r = r_toes_disp[i]["temp"]
-            dt = delta_ts[i]
-            abs_dt = abs(dt)
+        for i, res in enumerate(results):
+            tdi = res["tdi"]
+            t_l, t_r = res["temp_l"], res["temp_r"]
             
-            if abs_dt >= severe_th: color = "#ff4444"
-            elif abs_dt >= warn_th: color = "#ffa500"
+            if tdi >= severe_th: color = "#ff4444"
+            elif tdi >= warn_th: color = "#ffa500"
             else: color = "white"
             
-            tk.Label(self.toe_list_frame, text=f"{toe_names[i]}: {t_l:3} | {t_r:3} | {dt:+3}", font=("Consolas", 12), bg="#2b2b2b", fg=color).pack(anchor=tk.W, pady=2)
+            tk.Label(self.toe_list_frame, text=f"{toe_names[i]}: {t_l:3} | {t_r:3} | {tdi:>4.1f}%", font=("Consolas", 14), bg="#2b2b2b", fg=color).pack(anchor=tk.W, pady=3)
 
     def save_pdf(self):
         if self.final_cv_image is None: return
