@@ -132,13 +132,13 @@ Das grafische Benutzerinterface (Frontend) wurde vollumfänglich unter Verwendun
    git clone [https://github.com/noackjona-hash/Entzuendungserkennung-Waermebild.git](https://github.com/noackjona-hash/Entzuendungserkennung-Waermebild.git)
    cd Entzuendungserkennung-Waermebild
 
-2. **Virtuelle Umgebung erstellen & aktivieren**
+2.1 **Virtuelle Umgebung erstellen & aktivieren**
     Windows:
     ```bash
     python -m venv .venv
     .venv\Scripts\activate```
 
-    MacOS / Linux:
+2.2**MacOS / Linux:**
     ```bash
     python3 -m venv .venv
     source .venv/bin/activate ```
