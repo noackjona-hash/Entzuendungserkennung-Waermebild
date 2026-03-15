@@ -64,11 +64,16 @@ def extract_features_and_targets(csv_path, img_dir):
 if __name__ == "__main__":
     print("=== IGNITE AI TRAINER ===")
     dataset_dir = "dataset"
-    csv_file = os.path.join(dataset_dir, "labels.csv")
-    img_dir = os.path.join(dataset_dir, "images")
+    
+    # --- UPDATE: Nutze die neuen augmentierten Daten ---
+    # CSV_FILE VON labels.csv AUF labels_augmented.csv GEAENDERT
+    csv_file = os.path.join(dataset_dir, "labels_augmented.csv") 
+    
+    # IMG_DIR VON images AUF augmented_images GEAENDERT
+    img_dir = os.path.join(dataset_dir, "augmented_images") 
     
     if not os.path.exists(csv_file):
-        print("Fehler: Keine Trainingsdaten (labels.csv) gefunden!")
+        print(f"Fehler: Keine augmentierten Trainingsdaten ({csv_file}) gefunden!")
         exit()
         
     X, Y = extract_features_and_targets(csv_file, img_dir)
