@@ -134,51 +134,52 @@ Das grafische Benutzerinterface (Frontend) wurde vollumfänglich unter Verwendun
 
 2 **Virtuelle Umgebung erstellen & aktivieren**
     
-2.1**Windows:**
+2.1 **Windows:**
     ```bash
     python -m venv .venv
     .venv\Scripts\activate```
 
-2.2**MacOS / Linux:**
+2.2 **MacOS / Linux:**
     ```bash
     python3 -m venv .venv
     source .venv/bin/activate ```
-    
-3. **Abhängigkeiten installieren**
+
+
+3.**Abhängigkeiten installieren**
  ```bash
 pip install -r requirements.txt
 Software starten
 ```
 
-🖥️ Bedienungsanleitung
-Bild laden: Wähle ein thermografisches Bild (Füße/Hände) aus.
+### 🖥️ Bedienungsanleitung
+**Bild laden:** Wähle ein thermografisches Bild (Füße/Hände) aus.
 
-Deep Scan (KI): Klicke auf diesen Button, um die Machine-Learning-Inferenz zu starten. Die Software segmentiert das Bild automatisch.
+**Deep Scan (KI):** Klicke auf diesen Button, um die Machine-Learning-Inferenz zu starten. Die Software segmentiert das Bild automatisch.
 
-Manuelle Messung (Fallback): Sollte die Ausrichtung des Bildes stark von den Trainingsdaten abweichen, können die 10 Messpunkte per Fadenkreuz manuell gesetzt werden.
+**Manuelle Messung (Fallback):** Sollte die Ausrichtung des Bildes stark von den Trainingsdaten abweichen, können die 10 Messpunkte per Fadenkreuz manuell gesetzt werden.
 
-Einstellungen: Wechsle in den Tab "Einstellungen", um die Sensibilität des Algorithmus anzupassen (Live-Update des Bildes).
+**Einstellungen:** Wechsle in den Tab "Einstellungen", um die Sensibilität des Algorithmus anzupassen (Live-Update des Bildes).
 
-PDF Export: Klicke in der Seitenleiste auf "Klinischen Report (PDF)", um den Befund abzuspeichern.
+**PDF Export:** Klicke in der Seitenleiste auf "Klinischen Report (PDF)", um den Befund abzuspeichern.
 
-🏗️ Architektur & Module
-main.py: Controller & CustomTkinter GUI.
+### 🏗️ Architektur & Module
+**main.py:** Controller & CustomTkinter GUI.
 
-modules/loader.py: Sicheres Einlesen von Bildern via NumPy (Bypass für OpenCV-Umlaut-Bugs).
+**modules/loader.py:** Sicheres Einlesen von Bildern via NumPy (Bypass für OpenCV-Umlaut-Bugs).
 
-modules/geometry.py: Computer Vision, Hu-Moments und KI-Inferenz.
+**modules/geometry.py:** Computer Vision, Hu-Moments und KI-Inferenz.
 
-modules/analysis.py: Berechnung von TDI, Area, Gradient und FAI sowie Rendering der Overlays.
+**modules/analysis.py:** Berechnung von TDI, Area, Gradient und FAI sowie Rendering der Overlays.
 
-train_ai.py / augment_data.py: Skripte zur Pflege des ML-Modells.
+**train_ai.py / augment_data.py:** Skripte zur Pflege des ML-Modells.
 
-🔭 Ausblick
+### 🔭 Ausblick
 Für zukünftige Versionen ist geplant:
 
-Unterstützung für DICOM-Dateien (medizinischer Bildstandard).
+1. Unterstützung für DICOM-Dateien (medizinischer Bildstandard).
 
-Integration eines Convolutional Neural Networks (CNN) zur pixelgenauen semantischen Segmentierung.
+2. Integration eines Convolutional Neural Networks (CNN) zur pixelgenauen semantischen Segmentierung.
 
-Live-Video-Feed-Analyse direkt über angeschlossene FLIR-Wärmebildkameras.
+3. Live-Video-Feed-Analyse direkt über angeschlossene FLIR-Wärmebildkameras.
 
-Jugend Forscht 2026 - Innovation in der digitalen Medizintechnik.
+4. Jugend Forscht 2026 - Innovation in der digitalen Medizintechnik.
