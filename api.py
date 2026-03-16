@@ -8,12 +8,13 @@ from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import uvicorn
 
+# render_diagnostics wird nicht mehr importiert, da es jetzt Teil der API ist
 from modules.geometry import find_both_feet, extract_toes_with_ai
-from modules.analysis import perform_deep_analysis, render_diagnostics
+from modules.analysis import perform_deep_analysis
 
 app = FastAPI(
     title="IGNITE Analytics Core", 
-    version="4.0.0", 
+    version="4.0.1", 
     description="Vollständiges Backend für die IGNITE Web-App"
 )
 
@@ -32,6 +33,62 @@ class AnalysisResponse(BaseModel):
     processing_time_ms: float
     processed_image_base64: Optional[str] = None
 
+# --- BILD-RENDER FUNKTIONEN (Jetzt exklusiv für die API) ---
+def render_diagnostics(image, analysis_payload):
+    """Malt die Diagnose-Boxen in das Bild basierend auf den tiefen Metriken."""
+    if "error" in analysis_payload and analysis_payload["error"]:
+        return image
+
+    overlay = image.copy()
+    regional_data = analysis_payload.get("regional_metrics", [])
+
+    for data in regional_data:
+        pt_l = data["left_hemisphere"]["coordinates"]
+        pt_r = data["right_hemisphere"]["coordinates"]
+        status = data["status"]
+        tdi = data["bilateral_comparisons"]["tdi_percentage"]
+        is_left_hotter = data["bilateral_comparisons"]["is_left_dominant"]
+        
+        temp_l = data["left_hemisphere"]["metrics"]["thermo_statistics"]["max_temp"]
+        temp_r = data["right_hemisphere"]["metrics"]["thermo_statistics"]["max_temp"]
+
+        # Fadenkreuze zeichnen
+        cv2.drawMarker(overlay, pt_l, (255, 255, 255), cv2.MARKER_CROSS, 8, 1)
+        cv2.circle(overlay, pt_l, 2, (255, 255, 255), -1)
+        cv2.drawMarker(overlay, pt_r, (255, 255, 255), cv2.MARKER_CROSS, 8, 1)
+        cv2.circle(overlay, pt_r, 2, (255, 255, 255), -1)
+
+        hot_pt = pt_l if is_left_hotter else pt_r
+        normal_pt = pt_r if is_left_hotter else pt_l
+        normal_temp = temp_r if is_left_hotter else temp_l
+
+        if status == "PATHOLOGISCH_SCHWER":
+            _draw_bounding_box(overlay, hot_pt, (0, 0, 255), "SCHWER", tdi)
+            _draw_normal_marker(overlay, normal_pt, normal_temp)
+        elif status == "PATHOLOGISCH_VERDACHT":
+            _draw_bounding_box(overlay, hot_pt, (0, 140, 255), "VERDACHT", tdi)
+            _draw_normal_marker(overlay, normal_pt, normal_temp)
+        else:
+            _draw_normal_marker(overlay, pt_l, temp_l)
+            _draw_normal_marker(overlay, pt_r, temp_r)
+
+    cv2.addWeighted(overlay, 0.7, image, 0.3, 0, image)
+    return image
+
+def _draw_bounding_box(img, pt, color, status, tdi):
+    box_w, box_h = 45, 45
+    start_pt = (pt[0]-box_w, pt[1]-box_h)
+    end_pt = (pt[0]+box_w, pt[1]+box_h)
+    cv2.rectangle(img, start_pt, end_pt, color, cv2.FILLED)
+    cv2.rectangle(img, start_pt, end_pt, (255,255,255), 2)
+    cv2.putText(img, f"{status} ({tdi}%)", (start_pt[0], start_pt[1]-10), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
+
+def _draw_normal_marker(img, pt, temp):
+    cv2.circle(img, pt, 6, (0, 255, 0), -1)
+    cv2.putText(img, str(temp), (pt[0]-15, pt[1]-15), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 2)
+
+
+# --- API ROUTEN ---
 @app.post("/api/v1/analyze", response_model=AnalysisResponse)
 async def process_thermogram(
     file: UploadFile = File(...), 
@@ -64,7 +121,7 @@ async def process_thermogram(
         left_toes = extract_toes_with_ai(left_contour, gray_img, foot_mask)
         right_toes = extract_toes_with_ai(right_contour, gray_img, foot_mask)
         
-        # 3. Deep Analysis
+        # 3. Deep Analysis (Nutzt die neue geschwollene Methode)
         analysis_payload = perform_deep_analysis(
             left_toes, right_toes, gray_img, foot_mask, warn_th, severe_th
         )
