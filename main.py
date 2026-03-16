@@ -9,7 +9,7 @@ from fpdf import FPDF
 
 from modules.loader import load_and_preprocess
 from modules.geometry import find_both_feet, extract_toes_with_ai
-from modules.analysis import perform_deep_analysis
+from modules.analysis import perform_deep_analysis, render_diagnostics
 
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
@@ -17,7 +17,7 @@ ctk.set_default_color_theme("blue")
 class IgniteApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("IGNITE - Clinical Thermography Pro")
+        self.title("IGNITE - Clinical Thermography Pro (API-Ready)")
         self.geometry("1500x950")
         self.minsize(1200, 800)
 
@@ -28,7 +28,10 @@ class IgniteApp(ctk.CTk):
         self.final_cv_image = None
         self.left_toes_cache = []
         self.right_toes_cache = []
+        
+        self.global_metrics = {}
         self.analysis_results = []
+        
         self.manual_mode = False
         self.manual_clicks = []
         
@@ -92,9 +95,9 @@ class IgniteApp(ctk.CTk):
         self.scroll_frame = ctk.CTkScrollableFrame(tab, fg_color="#1a1a1a")
         self.scroll_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
         
-        ctk.CTkLabel(self.scroll_frame, text="KLINISCHE ROHDATEN & METRIKEN", font=ctk.CTkFont(size=20, weight="bold"), text_color="#00ccff").pack(pady=20)
+        ctk.CTkLabel(self.scroll_frame, text="KLINISCHE ROHDATEN & STATISTISCHE METRIKEN", font=ctk.CTkFont(size=20, weight="bold"), text_color="#00ccff").pack(pady=20)
         
-        self.result_text = ctk.CTkTextbox(self.scroll_frame, font=ctk.CTkFont(family="Consolas", size=14), height=600, wrap="none", fg_color="#121212")
+        self.result_text = ctk.CTkTextbox(self.scroll_frame, font=ctk.CTkFont(family="Consolas", size=14), height=800, wrap="none", fg_color="#121212")
         self.result_text.pack(expand=True, fill="both", padx=20, pady=10)
         self.result_text.configure(state="disabled")
 
@@ -121,7 +124,6 @@ class IgniteApp(ctk.CTk):
         if self.final_cv_image is not None and not self.manual_mode:
             self.update_live_analysis()
 
-    # --- LOGIK ---
     def load_image(self):
         file_path = filedialog.askopenfilename(filetypes=[("Thermal Images", "*.jpg *.jpeg *.png")])
         if file_path:
@@ -138,7 +140,7 @@ class IgniteApp(ctk.CTk):
 
     def run_analysis(self):
         if self.cv_original is None: return
-        self.status_label.configure(text="Extrahierte Merkmale... KI-Modell analysiert...")
+        self.status_label.configure(text="Extrahiere Merkmale... KI-Modell analysiert...")
         self.update()
         
         left_contour, right_contour, foot_mask = find_both_feet(self.cv_gray)
@@ -151,7 +153,7 @@ class IgniteApp(ctk.CTk):
             if self.left_toes_cache and len(self.left_toes_cache) == 5:
                 self.update_live_analysis()
                 self.btn_pdf.configure(state="normal")
-                self.status_label.configure(text="Erfolg: Umfassende Diagnose abgeschlossen.")
+                self.status_label.configure(text="Erfolg: Umfassende API-gestützte Diagnose abgeschlossen.")
             else:
                 messagebox.showwarning("Hinweis", "KI-Zuordnung unsicher. Nutze die manuelle Messung.")
         else:
@@ -164,12 +166,20 @@ class IgniteApp(ctk.CTk):
         img_copy = self.cv_original.copy()
         if self.foot_mask is None: self.foot_mask = np.ones_like(self.cv_gray)*255
         
-        final_image, results = perform_deep_analysis(img_copy, self.left_toes_cache, self.right_toes_cache, self.cv_gray, self.foot_mask, warn_th, severe_th)
+        # API-Entkoppelte Logik
+        analysis_payload = perform_deep_analysis(
+            self.left_toes_cache, self.right_toes_cache, 
+            self.cv_gray, self.foot_mask, warn_th, severe_th
+        )
+        
+        final_image = render_diagnostics(img_copy, analysis_payload)
         
         self.final_cv_image = final_image
-        self.analysis_results = results
+        self.analysis_results = analysis_payload.get("regional_metrics", [])
+        self.global_metrics = analysis_payload.get("global_metrics", {})
+        
         self.display_image(final_image)
-        self.populate_details_tab(results)
+        self.populate_details_tab(self.analysis_results, self.global_metrics)
 
     def start_manual_mode(self):
         if self.cv_original is None: return
@@ -212,40 +222,44 @@ class IgniteApp(ctk.CTk):
         self.btn_pdf.configure(state="normal")
         self.status_label.configure(text="Manuelle Messung abgeschlossen.")
 
-    def populate_details_tab(self, results):
+    def populate_details_tab(self, results, global_metrics):
         self.result_text.configure(state="normal")
         self.result_text.delete("1.0", "end")
         
-        fai = results[0]["fai"] if results else 0
+        fai = global_metrics.get("fai", 0.0)
         
         report = f"=================================================================================\n"
-        report += f" IGNITE CLINICAL THERMOGRAPHY REPORT\n"
+        report += f" IGNITE CLINICAL THERMOGRAPHY REPORT (API DATA)\n"
         report += f" Datum: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
         report += f"=================================================================================\n\n"
         
         report += f"GLOBALE METRIKEN:\n"
         report += f"-----------------\n"
         report += f"Fuss-Asymmetrie-Index (FAI): {fai}%\n"
-        report += f"(Ein FAI > 10% deutet auf systematische Durchblutungsstoerungen hin)\n\n"
+        report += f"(Ein FAI > 10% deutet auf systemische Durchblutungsstoerungen hin)\n\n"
         
-        report += f"LOKALE ZEHEN-ANALYSE:\n"
-        report += f"{'-'*85}\n"
-        report += f"{'Zeh':<10} | {'Status':<10} | {'TDI':<7} | {'Temp L':<7} | {'Temp R':<7} | {'Area L/R (px)':<15} | {'Grad L/R'}\n"
-        report += f"{'-'*85}\n"
+        report += f"LOKALE ZEHEN-ANALYSE (Bilaterale Gegenüberstellung):\n"
+        report += f"{'='*85}\n"
         
         toe_names = ["Kl. Zeh", "Zeh 4", "Mittelzeh", "Zeh 2", "Gr. Zeh"]
 
         for res in results:
             name = toe_names[res["toe_index"]]
-            area_str = f"{res['area_l']}/{res['area_r']}"
-            grad_str = f"{res['grad_l']}/{res['grad_r']}"
-            
-            report += f"{name:<10} | {res['status']:<10} | {res['tdi']:>6.2f}% | {res['t_l']:<7} | {res['t_r']:<7} | {area_str:<15} | {grad_str}\n"
+            report += f"[{name.upper()}]\n"
+            report += f"Status:             {res['status']} (TDI: {res['tdi']}%)\n"
+            report += f"Temperatur (Max):   Links: {res['t_l']:<5} | Rechts: {res['t_r']}\n"
+            report += f"Temp (Mean ± SD):   Links: {res['mean_l']}±{res['std_l']} | Rechts: {res['mean_r']}±{res['std_r']}\n"
+            report += f"Hotspot Fläche:     Links: {res['area_l']:<5} px | Rechts: {res['area_r']} px\n"
+            report += f"Therm. Gradient:    Links: {res['grad_l']:<5}    | Rechts: {res['grad_r']}\n"
+            report += f"Zentrums-Versatz:   Links: {res['shift_l']:<5} px | Rechts: {res['shift_r']} px\n"
+            report += f"{'-'*85}\n"
 
-        report += f"\n\nERKLÄRUNG DER METRIKEN:\n"
-        report += f"TDI (Thermal Divergence Index): Prozentuale Abweichung der Temperatur zwischen Links und Rechts.\n"
-        report += f"Area (Hotspot Fläche): Anzahl der stark erhitzten Pixel im Messbereich.\n"
-        report += f"Gradient (Abfall): Temperaturdifferenz vom Zentrum zum Rand (hoher Wert = akute, scharfe Entzündung).\n"
+        report += f"\nERKLÄRUNG DER METRIKEN:\n"
+        report += f"TDI: Thermal Divergence Index (Prozentuale Abweichung).\n"
+        report += f"Temp (Mean ± SD): Durchschnittstemperatur und Standardabweichung in der Messregion.\n"
+        report += f"Hotspot Fläche: Anzahl der extrem erhitzten Pixel.\n"
+        report += f"Gradient: Abfall der Temperatur vom Zentrum (hoher Wert = scharfe Entzündung).\n"
+        report += f"Zentrums-Versatz: Distanz zwischen dem anatomischen Zentrum und dem reinen Hitze-Schwerpunkt.\n"
 
         self.result_text.insert("end", report)
         self.result_text.configure(state="disabled")
@@ -256,7 +270,6 @@ class IgniteApp(ctk.CTk):
         save_path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF", "*.pdf")], initialfile=f"Ignite_Report_{datetime.now().strftime('%Y%m%d')}.pdf")
         if not save_path: return
 
-        # Temporaeres Bild speichern fuer PDF
         temp_img_path = "temp_report_img.jpg"
         cv2.imwrite(temp_img_path, self.final_cv_image)
 
@@ -264,30 +277,24 @@ class IgniteApp(ctk.CTk):
             pdf = FPDF()
             pdf.add_page()
             
-            # Header
             pdf.set_font("Arial", 'B', 20)
             pdf.cell(200, 10, txt="IGNITE DIAGNOSTICS - THERMAL REPORT", ln=True, align='C')
             pdf.set_font("Arial", '', 10)
             pdf.cell(200, 10, txt=f"Erstellt am: {datetime.now().strftime('%d.%m.%Y %H:%M')}", ln=True, align='C')
             pdf.ln(10)
 
-            # Bild einfuegen
             pdf.image(temp_img_path, x=15, w=180)
-            pdf.ln(120) # Platz lassen
+            pdf.ln(120) 
 
-            # Tabelle / Daten
             pdf.set_font("Courier", '', 10)
-            
-            # Hole den exakten Text aus dem Text-Feld
             report_text = self.result_text.get("1.0", "end-1c")
             
             for line in report_text.split('\n'):
-                # Umlaute fuer FPDF bereinigen
                 safe_line = line.replace('ä', 'ae').replace('ö', 'oe').replace('ü', 'ue').replace('Ä', 'Ae').replace('Ö', 'Oe').replace('Ü', 'Ue').replace('ß', 'ss')
                 pdf.cell(200, 5, txt=safe_line, ln=True)
 
             pdf.output(save_path)
-            messagebox.showinfo("Erfolg", f"Hochprofessioneller Medizin-Report wurde gespeichert unter:\n{save_path}")
+            messagebox.showinfo("Erfolg", f"Hochprofessioneller API-Daten-Report wurde gespeichert unter:\n{save_path}")
         except Exception as e:
             messagebox.showerror("Fehler", f"Konnte PDF nicht erstellen: {str(e)}")
         finally:
