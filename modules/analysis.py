@@ -2,66 +2,121 @@ import cv2
 import numpy as np
 import math
 
-def calculate_tdi(temp_l, temp_r):
-    """Kalkuliert den Thermal Divergence Index (TDI) als prozentuale Abweichung."""
-    diff = abs(temp_l - temp_r)
-    return round((diff / 255.0) * 100.0, 2)
-
-def analyze_hotspot_details(gray_img, foot_mask, pt, max_temp):
+def calculate_tdi(temp_l: float, temp_r: float) -> float:
     """
-    Extrahiert tiefgreifende klinische und statistische Metriken um einen definierten Sensorpunkt.
+    Kalkuliert den Thermal Divergence Index (TDI) als standardisierte, prozentuale Abweichung.
+    """
+    diff = abs(temp_l - temp_r)
+    return round(float((diff / 255.0) * 100.0), 2)
+
+def analyze_hotspot_comprehensive(gray_img: np.ndarray, foot_mask: np.ndarray, pt: tuple, max_temp: float) -> dict:
+    """
+    Extrahiert ein erschöpfendes Spektrum klinischer, statistischer und morphologischer Metriken 
+    innerhalb eines definierten thermalen Radius.
     """
     x, y = pt
     r = 20
-    x_s, x_e = max(0, x-r), min(gray_img.shape[1], x+r)
-    y_s, y_e = max(0, y-r), min(gray_img.shape[0], y+r)
+    x_s, x_e = max(0, x - r), min(gray_img.shape[1], x + r)
+    y_s, y_e = max(0, y - r), min(gray_img.shape[0], y + r)
     
     roi_gray = gray_img[y_s:y_e, x_s:x_e]
     roi_mask = foot_mask[y_s:y_e, x_s:x_e]
     
     if roi_gray.size == 0 or np.count_nonzero(roi_mask) == 0:
-        return 0, 0.0, 0.0, 0.0, 0.0
+        return _generate_empty_metrics()
 
-    # 1. Lokale Statistik (Mean & Standard Deviation)
     valid_pixels = roi_gray[roi_mask > 0]
-    mean_temp = round(float(np.mean(valid_pixels)), 2)
-    std_dev = round(float(np.std(valid_pixels)), 2)
+    
+    if valid_pixels.size == 0:
+        return _generate_empty_metrics()
 
-    # 2. Hotspot Area (Fläche der obersten 10% Hitze)
+    # 1. Deskriptive Thermostatistik
+    mean_temp = float(np.mean(valid_pixels))
+    median_temp = float(np.median(valid_pixels))
+    std_dev = float(np.std(valid_pixels))
+    variance = float(np.var(valid_pixels))
+    
+    percentile_25 = float(np.percentile(valid_pixels, 25))
+    percentile_75 = float(np.percentile(valid_pixels, 75))
+    iqr_temp = percentile_75 - percentile_25
+
+    # 2. Morphologische Isothermen-Analyse
     threshold_temp = max_temp * 0.90
     _, hot_mask = cv2.threshold(roi_gray, threshold_temp, 255, cv2.THRESH_BINARY)
     hot_mask = cv2.bitwise_and(hot_mask, hot_mask, mask=roi_mask)
-    area = cv2.countNonZero(hot_mask)
-
-    # 3. Thermischer Gradient (Rand-Temperatur vs. Maximum)
-    mean_border_temp = np.mean(roi_gray[0,:].tolist() + roi_gray[-1,:].tolist() + roi_gray[:,0].tolist() + roi_gray[:,-1].tolist())
-    gradient = round(float(max_temp - mean_border_temp) / r, 2)
     
-    # 4. Thermischer Schwerpunkt-Versatz (Centroid Shift)
-    M = cv2.moments(hot_mask)
-    if M["m00"] != 0:
-        cx = int(M["m10"] / M["m00"])
-        cy = int(M["m01"] / M["m00"])
-        # Distanz vom geometrischen Zentrum der ROI zum Hitzeschwerpunkt
-        shift = round(math.sqrt((cx - r)**2 + (cy - r)**2), 2)
-    else:
-        shift = 0.0
+    area_px = cv2.countNonZero(hot_mask)
+    total_valid_area = valid_pixels.size
+    isothermal_ratio = float(area_px / total_valid_area) if total_valid_area > 0 else 0.0
 
-    return area, gradient, mean_temp, std_dev, shift
+    # 3. Thermischer Gradient (Peripherie vs. Zentrum)
+    top_border = roi_gray[0, :].tolist() if roi_gray.shape[0] > 0 else []
+    bottom_border = roi_gray[-1, :].tolist() if roi_gray.shape[0] > 1 else []
+    left_border = roi_gray[:, 0].tolist() if roi_gray.shape[1] > 0 else []
+    right_border = roi_gray[:, -1].tolist() if roi_gray.shape[1] > 1 else []
+    
+    border_pixels = top_border + bottom_border + left_border + right_border
+    mean_border_temp = float(np.mean(border_pixels)) if border_pixels else 0.0
+    gradient = float((max_temp - mean_border_temp) / r) if r > 0 else 0.0
 
-def perform_deep_analysis(left_toes, right_toes, gray_img, foot_mask, warn_th, severe_th):
+    # 4. Geometrische Dezentralisierung und Zirkularität
+    contours, _ = cv2.findContours(hot_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    shift = 0.0
+    circularity = 0.0
+    
+    if contours:
+        largest_contour = max(contours, key=cv2.contourArea)
+        perimeter = cv2.arcLength(largest_contour, True)
+        
+        if perimeter > 0:
+            circularity = 4 * math.pi * (area_px / (perimeter * perimeter))
+            
+        M = cv2.moments(largest_contour)
+        if M["m00"] != 0:
+            cx = int(M["m10"] / M["m00"])
+            cy = int(M["m01"] / M["m00"])
+            shift = math.sqrt((cx - r)**2 + (cy - r)**2)
+
+    return {
+        "thermo_statistics": {
+            "max_temp": round(float(max_temp), 2),
+            "mean_temp": round(mean_temp, 2),
+            "median_temp": round(median_temp, 2),
+            "std_dev": round(std_dev, 2),
+            "variance": round(variance, 2),
+            "iqr": round(iqr_temp, 2)
+        },
+        "morphology": {
+            "area_px": int(area_px),
+            "isothermal_ratio": round(isothermal_ratio, 4),
+            "circularity": round(circularity, 4),
+            "centroid_shift_px": round(shift, 2)
+        },
+        "dynamics": {
+            "thermal_gradient": round(gradient, 4)
+        }
+    }
+
+def _generate_empty_metrics() -> dict:
+    """Generiert eine standardisierte Null-Datenstruktur bei Evaluierungsversagen."""
+    return {
+        "thermo_statistics": {"max_temp": 0.0, "mean_temp": 0.0, "median_temp": 0.0, "std_dev": 0.0, "variance": 0.0, "iqr": 0.0},
+        "morphology": {"area_px": 0, "isothermal_ratio": 0.0, "circularity": 0.0, "centroid_shift_px": 0.0},
+        "dynamics": {"thermal_gradient": 0.0}
+    }
+
+def perform_deep_analysis(left_toes: list, right_toes: list, gray_img: np.ndarray, foot_mask: np.ndarray, warn_th: float, severe_th: float) -> dict:
     """
-    Führt die rein datengetriebene Analyse aus (API-kompatibel).
-    Retourniert strukturierte JSON/Dict-Datenstände ohne Bildmanipulation.
+    Initiiert die vollumfängliche, datengetriebene analytische Evaluation.
     """
     if len(left_toes) != 5 or len(right_toes) != 5:
-        return {"error": "Incomplete coordinate data", "global_metrics": {}, "regional_metrics": []}
+        return {"error": "Incomplete coordinate mapping. Segmentation algorithms failed.", "global_metrics": {}, "regional_metrics": []}
 
     right_toes_matched = list(reversed(right_toes))
     detailed_results = []
 
-    avg_l = sum([t["temp"] for t in left_toes]) / 5
-    avg_r = sum([t["temp"] for t in right_toes_matched]) / 5
+    avg_l = sum([t["temp"] for t in left_toes]) / 5.0
+    avg_r = sum([t["temp"] for t in right_toes_matched]) / 5.0
     fai_index = calculate_tdi(avg_l, avg_r)
 
     for i in range(5):
@@ -72,86 +127,42 @@ def perform_deep_analysis(left_toes, right_toes, gray_img, foot_mask, warn_th, s
         t_r = r_data["temp"]
         tdi = calculate_tdi(t_l, t_r)
         
-        area_l, grad_l, mean_l, std_l, shift_l = analyze_hotspot_details(gray_img, foot_mask, l_data["sensor"], t_l)
-        area_r, grad_r, mean_r, std_r, shift_r = analyze_hotspot_details(gray_img, foot_mask, r_data["sensor"], t_r)
+        metrics_l = analyze_hotspot_comprehensive(gray_img, foot_mask, l_data["sensor"], t_l)
+        metrics_r = analyze_hotspot_comprehensive(gray_img, foot_mask, r_data["sensor"], t_r)
 
         is_left_hotter = t_l > t_r
         diff = abs(t_l - t_r)
 
-        status = "NORMAL"
+        status = "PHYSIOLOGISCH"
         if tdi >= severe_th:
-            status = "SCHWER"
+            status = "PATHOLOGISCH_SCHWER"
         elif tdi >= warn_th:
-            status = "VERDACHT"
+            status = "PATHOLOGISCH_VERDACHT"
 
         result_dict = {
-            "toe_index": i,
-            "coordinates_left": l_data["sensor"],
-            "coordinates_right": r_data["sensor"],
-            "t_l": t_l, "t_r": t_r,
-            "tdi": tdi,
-            "diff": diff,
-            "is_left_hotter": is_left_hotter,
-            "area_l": area_l, "area_r": area_r,
-            "grad_l": grad_l, "grad_r": grad_r,
-            "mean_l": mean_l, "mean_r": mean_r,
-            "std_l": std_l, "std_r": std_r,
-            "shift_l": shift_l, "shift_r": shift_r,
-            "status": status
+            "anatomical_index": i,
+            "status": status,
+            "bilateral_comparisons": {
+                "tdi_percentage": tdi,
+                "absolute_diff": round(float(diff), 2),
+                "is_left_dominant": is_left_hotter
+            },
+            "left_hemisphere": {
+                "coordinates": l_data["sensor"],
+                "metrics": metrics_l
+            },
+            "right_hemisphere": {
+                "coordinates": r_data["sensor"],
+                "metrics": metrics_r
+            }
         }
         detailed_results.append(result_dict)
 
     return {
-        "global_metrics": {"fai": fai_index},
+        "global_metrics": {
+            "foot_asymmetry_index_percentage": fai_index,
+            "mean_temperature_left": round(float(avg_l), 2),
+            "mean_temperature_right": round(float(avg_r), 2)
+        },
         "regional_metrics": detailed_results
     }
-
-def render_diagnostics(image, analysis_payload):
-    """
-    Übernimmt den strukturierten API-Payload und generiert das visuelle Overlay.
-    """
-    if "error" in analysis_payload:
-        return image
-
-    overlay = image.copy()
-    regional_data = analysis_payload.get("regional_metrics", [])
-
-    for data in regional_data:
-        pt_l = data["coordinates_left"]
-        pt_r = data["coordinates_right"]
-        status = data["status"]
-        tdi = data["tdi"]
-        is_left_hotter = data["is_left_hotter"]
-
-        cv2.drawMarker(overlay, pt_l, (255, 255, 255), cv2.MARKER_CROSS, 8, 1)
-        cv2.circle(overlay, pt_l, 2, (255, 255, 255), -1)
-        cv2.drawMarker(overlay, pt_r, (255, 255, 255), cv2.MARKER_CROSS, 8, 1)
-        cv2.circle(overlay, pt_r, 2, (255, 255, 255), -1)
-
-        hot_pt = pt_l if is_left_hotter else pt_r
-        normal_pt = pt_r if is_left_hotter else pt_l
-
-        if status == "SCHWER":
-            _draw_bounding_box(overlay, hot_pt, (0, 0, 255), status, tdi)
-            _draw_normal_marker(overlay, normal_pt, data["t_r"] if is_left_hotter else data["t_l"])
-        elif status == "VERDACHT":
-            _draw_bounding_box(overlay, hot_pt, (0, 140, 255), status, tdi)
-            _draw_normal_marker(overlay, normal_pt, data["t_r"] if is_left_hotter else data["t_l"])
-        else:
-            _draw_normal_marker(overlay, pt_l, data["t_l"])
-            _draw_normal_marker(overlay, pt_r, data["t_r"])
-
-    cv2.addWeighted(overlay, 0.7, image, 0.3, 0, image)
-    return image
-
-def _draw_bounding_box(img, pt, color, status, tdi):
-    box_w, box_h = 45, 45
-    start_pt = (pt[0]-box_w, pt[1]-box_h)
-    end_pt = (pt[0]+box_w, pt[1]+box_h)
-    cv2.rectangle(img, start_pt, end_pt, color, cv2.FILLED)
-    cv2.rectangle(img, start_pt, end_pt, (255,255,255), 2)
-    cv2.putText(img, f"{status} ({tdi}%)", (start_pt[0], start_pt[1]-10), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
-
-def _draw_normal_marker(img, pt, temp):
-    cv2.circle(img, pt, 6, (0, 255, 0), -1)
-    cv2.putText(img, str(temp), (pt[0]-15, pt[1]-15), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 2)
