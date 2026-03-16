@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IGNITE Web Diagnostics</title>
+    <!-- Tailwind CSS für ein modernes, professionelles Design -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; }
+        .glass-panel { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid #334155; }
+    </style>
+</head>
+<body class="min-h-screen p-8 font-sans">
+
+    <div class="max-w-6xl mx-auto">
+        <!-- Header -->
+        <header class="mb-10 text-center">
+            <h1 class="text-4xl font-bold text-cyan-400 tracking-wider">IGNITE <span class="text-white">API DASHBOARD</span></h1>
+            <p class="text-slate-400 mt-2">Klinische Thermografie - Web Interface (Localhost)</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            
+            <!-- Upload Panel -->
+            <div class="glass-panel p-6 rounded-xl col-span-1 h-fit">
+                <h2 class="text-xl font-semibold mb-4 text-cyan-300">Bildanalyse starten</h2>
+                
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-slate-300 mb-2">Wärmebild auswählen (.jpg, .png)</label>
+                    <input type="file" id="imageInput" accept="image/*" class="block w-full text-sm text-slate-400
+                        file:mr-4 file:py-2 file:px-4
+                        file:rounded-md file:border-0
+                        file:text-sm file:font-semibold
+                        file:bg-cyan-900 file:text-cyan-300
+                        hover:file:bg-cyan-800 cursor-pointer">
+                </div>
+
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-slate-300 mb-2">Verdacht ab TDI (%)</label>
+                    <input type="number" id="warnTh" value="8.0" step="0.5" class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white">
+                </div>
+
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-slate-300 mb-2">Schwer ab TDI (%)</label>
+                    <input type="number" id="severeTh" value="15.0" step="0.5" class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white">
+                </div>
+
+                <button id="analyzeBtn" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 px-4 rounded transition duration-200">
+                    Sende an API
+                </button>
+
+                <div id="loadingIndicator" class="hidden mt-4 text-center text-cyan-400 animate-pulse">
+                    Analysiere Bild... Bitte warten.
+                </div>
+            </div>
+
+            <!-- Results Panel -->
+            <div class="glass-panel p-6 rounded-xl col-span-1 lg:col-span-2">
+                <h2 class="text-xl font-semibold mb-4 text-cyan-300">API-Ergebnisse (JSON)</h2>
+                
+                <!-- Globale Metriken -->
+                <div id="globalMetricsBox" class="hidden bg-slate-800 rounded-lg p-4 mb-6 border-l-4 border-cyan-500">
+                    <h3 class="text-lg font-bold text-white mb-1">Globale Metriken</h3>
+                    <p class="text-slate-300">Fuss-Asymmetrie-Index (FAI): <span id="faiValue" class="font-mono text-xl text-yellow-400"></span>%</p>
+                </div>
+
+                <!-- Regionale Metriken Tabelle -->
+                <div id="resultsTableContainer" class="hidden overflow-x-auto">
+                    <table class="w-full text-left text-sm text-slate-300">
+                        <thead class="bg-slate-800 text-slate-200">
+                            <tr>
+                                <th class="p-3 rounded-tl-lg">Zehe</th>
+                                <th class="p-3">Status</th>
+                                <th class="p-3">TDI (%)</th>
+                                <th class="p-3">Temp (L/R)</th>
+                                <th class="p-3 rounded-tr-lg">Gradient (L/R)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="resultsBody" class="divide-y divide-slate-700">
+                            <!-- JS injects rows here -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Raw JSON Ausagbe für Entwickler -->
+                <div class="mt-8">
+                    <h3 class="text-sm text-slate-400 mb-2">Raw JSON Response:</h3>
+                    <pre id="jsonOutput" class="bg-black p-4 rounded text-xs text-green-400 overflow-x-auto h-64 border border-slate-700">Warte auf Daten...</pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const toeNames = ["Kl. Zeh", "Zeh 4", "Mittelzeh", "Zeh 2", "Gr. Zeh"];
+
+        document.getElementById('analyzeBtn').addEventListener('click', async () => {
+            const fileInput = document.getElementById('imageInput');
+            if (fileInput.files.length === 0) {
+                alert('Bitte wählen Sie zuerst ein Wärmebild aus!');
+                return;
+            }
+
+            const warnTh = document.getElementById('warnTh').value;
+            const severeTh = document.getElementById('severeTh').value;
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            // UI Updates
+            document.getElementById('analyzeBtn').disabled = true;
+            document.getElementById('loadingIndicator').classList.remove('hidden');
+            document.getElementById('jsonOutput').textContent = "Sende Anfrage an http://127.0.0.1:8000/analyze ...";
+
+            try {
+                // API Call zum Localhost Backend
+                const response = await fetch(`http://127.0.0.1:8000/analyze?warn_th=${warnTh}&severe_th=${severeTh}`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                // Raw JSON formatieren und anzeigen
+                document.getElementById('jsonOutput').textContent = JSON.stringify(data, null, 2);
+
+                if (data.error) {
+                    alert("API Fehler: " + data.error);
+                } else {
+                    // Globale Metriken rendern
+                    document.getElementById('globalMetricsBox').classList.remove('hidden');
+                    document.getElementById('faiValue').textContent = data.global_metrics.fai;
+
+                    // Regionale Metriken rendern
+                    const tbody = document.getElementById('resultsBody');
+                    tbody.innerHTML = ''; // Clear previous
+                    
+                    data.regional_metrics.forEach((item, index) => {
+                        let statusColor = "text-green-400";
+                        if (item.status === "SCHWER") statusColor = "text-red-500 font-bold";
+                        if (item.status === "VERDACHT") statusColor = "text-orange-400 font-bold";
+
+                        const row = `
+                            <tr class="bg-slate-800/50 hover:bg-slate-700 transition">
+                                <td class="p-3 font-medium text-white">${toeNames[item.toe_index]}</td>
+                                <td class="p-3 ${statusColor}">${item.status}</td>
+                                <td class="p-3 font-mono">${item.tdi.toFixed(2)}</td>
+                                <td class="p-3 font-mono">${item.t_l} / ${item.t_r}</td>
+                                <td class="p-3 font-mono text-slate-400">${item.grad_l} / ${item.grad_r}</td>
+                            </tr>
+                        `;
+                        tbody.innerHTML += row;
+                    });
+                    
+                    document.getElementById('resultsTableContainer').classList.remove('hidden');
+                }
+
+            } catch (error) {
+                document.getElementById('jsonOutput').textContent = "Fehler bei der Verbindung zum Server: " + error.message + "\n\nIst der Uvicorn Server gestartet?";
+            } finally {
+                document.getElementById('analyzeBtn').disabled = false;
+                document.getElementById('loadingIndicator').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

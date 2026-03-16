@@ -1,13 +1,24 @@
 from fastapi import FastAPI, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
 import cv2
 import numpy as np
 from pydantic import BaseModel
 from typing import List, Dict, Any
+import uvicorn
 
 from modules.geometry import find_both_feet, extract_toes_with_ai
 from modules.analysis import perform_deep_analysis
 
 app = FastAPI(title="IGNITE Diagnostics API", version="1.0.0", description="Backend Service für thermografische Bildanalyse")
+
+# CORS-Middleware hinzufügen, damit die lokale Webseite mit der API kommunizieren darf
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Im Produktivbetrieb sollte hier nur die Domain der Webseite stehen
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class AnalysisResponse(BaseModel):
     global_metrics: Dict[str, float]
@@ -42,5 +53,6 @@ async def analyze_thermogram(file: UploadFile = File(...), warn_th: float = 8.0,
     except Exception as e:
          return {"global_metrics": {}, "regional_metrics": [], "error": str(e)}
 
-# Ausführungsscript für uvicorn Server
-# Start mit: uvicorn api:app --reload
+if __name__ == "__main__":
+    # Startet den Server direkt, wenn die Datei ausgeführt wird
+    uvicorn.run("api:app", host="127.0.0.1", port=8000, reload=True)
