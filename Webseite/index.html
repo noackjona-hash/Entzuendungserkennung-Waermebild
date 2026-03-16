@@ -10,7 +10,7 @@
         body { background-color: #0f172a; color: #f8fafc; }
         .glass-panel { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid #334155; }
         
-        /* Eigener Scrollbar für das JSON Feld */
+        /* Eigener Scrollbar für das JSON Feld und Tabellen */
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: #1e293b; rounded: 4px; }
         ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
@@ -19,25 +19,25 @@
 </head>
 <body class="min-h-screen p-4 md:p-8 font-sans bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPgo8cmVjdCB3aWR0aD0iNCIgaGVpZ2h0PSI0IiBmaWxsPSIjMGYxNzJhIj48L3JlY3Q+Cjxwb2x5Z29uIGZpbGw9IiMxZTI5M2IiIHBvaW50cz0iNCAwIDAgNCA0IDQiPjwvcG9seWdvbj4KPC9zdmc+')]">
 
-    <div class="max-w-7xl mx-auto">
+    <div class="max-w-[90rem] mx-auto">
         <!-- Header -->
         <header class="mb-10 text-center">
             <h1 class="text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 tracking-wider drop-shadow-lg">
                 IGNITE <span class="text-white">API DASHBOARD</span>
             </h1>
-            <p class="text-slate-400 mt-3 text-lg">Klinische Thermografie - Web Interface</p>
+            <p class="text-slate-400 mt-3 text-lg">Hochauflösende Klinische Thermografie - Web Interface</p>
             <div class="inline-flex items-center gap-2 mt-2 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs text-slate-300">
-                <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Server connected (Localhost)
+                <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Servereinheit verbunden (Localhost)
             </div>
         </header>
 
-        <div class="grid grid-cols-1 xl:grid-cols-3 gap-8">
+        <div class="grid grid-cols-1 xl:grid-cols-4 gap-8">
             
             <!-- Linke Spalte: Upload Panel -->
-            <div class="glass-panel p-6 rounded-2xl col-span-1 h-fit shadow-2xl">
+            <div class="glass-panel p-6 rounded-2xl col-span-1 xl:col-span-1 h-fit shadow-2xl">
                 <h2 class="text-xl font-semibold mb-6 text-cyan-300 flex items-center gap-2">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-                    Neuer Scan
+                    Diagnostischer Scan
                 </h2>
                 
                 <div class="mb-6">
@@ -54,31 +54,31 @@
                 </div>
 
                 <div class="bg-slate-800/50 rounded-lg p-4 mb-6 border border-slate-700 text-sm text-slate-400">
-                    <p class="mb-1"><span class="text-cyan-400 font-bold">Info:</span> Die klinischen Schwellenwerte (TDI) werden direkt vom sicheren Backend-Server bezogen.</p>
+                    <p class="mb-1"><span class="text-cyan-400 font-bold">Information:</span> Die klinischen Schwellenwerte (TDI) sowie die statistischen Parameter werden zentral über die gesicherte Backend-Architektur appliziert.</p>
                 </div>
 
                 <button id="analyzeBtn" class="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 transform hover:scale-[1.02] shadow-lg shadow-cyan-500/25 flex justify-center items-center gap-2">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                    Analyse starten
+                    Evaluation initiieren
                 </button>
 
                 <div id="loadingIndicator" class="hidden mt-6 text-center">
                     <div class="inline-block w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mb-2"></div>
-                    <p class="text-cyan-400 animate-pulse text-sm">Server berechnet Deep Scan...</p>
+                    <p class="text-cyan-400 animate-pulse text-sm">Applikation berechnet den Deep Scan...</p>
                 </div>
             </div>
 
             <!-- Rechte Spalte: Results Panel -->
-            <div class="col-span-1 xl:col-span-2 space-y-8">
+            <div class="col-span-1 xl:col-span-3 space-y-8">
                 
                 <!-- Visuelles Overlay vom Server -->
                 <div id="resultImageContainer" class="hidden glass-panel p-6 rounded-2xl shadow-2xl relative overflow-hidden">
-                    <div class="absolute top-0 right-0 bg-cyan-500 text-slate-900 text-xs font-bold px-3 py-1 rounded-bl-lg z-10">
-                        KI RENDERED
+                    <div class="absolute top-0 right-0 bg-cyan-500 text-slate-900 text-xs font-bold px-3 py-1 rounded-bl-lg z-10 tracking-widest">
+                        KI-RENDERED
                     </div>
-                    <h2 class="text-xl font-semibold mb-4 text-cyan-300">Diagnose-Visualisierung</h2>
+                    <h2 class="text-xl font-semibold mb-4 text-cyan-300">Visualisierung der pathologischen Befunde</h2>
                     <div class="rounded-xl overflow-hidden border border-slate-700 bg-black flex justify-center items-center">
-                        <img id="resultImage" src="" alt="Analyzed Thermogram" class="max-h-[500px] object-contain w-full">
+                        <img id="resultImage" src="" alt="Analysiertes Thermogramm" class="max-h-[500px] object-contain w-full">
                     </div>
                     <div class="mt-3 flex justify-end items-center gap-2">
                         <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -87,43 +87,59 @@
                 </div>
 
                 <div class="glass-panel p-6 rounded-2xl shadow-2xl">
-                    <h2 class="text-xl font-semibold mb-6 text-cyan-300">Klinische Auswertung</h2>
+                    <h2 class="text-xl font-semibold mb-6 text-cyan-300">Ausführliche klinische Metriken</h2>
                     
                     <!-- Globale Metriken -->
                     <div id="globalMetricsBox" class="hidden bg-gradient-to-r from-slate-800 to-slate-900 rounded-xl p-5 mb-6 border-l-4 border-cyan-500 shadow-inner">
-                        <h3 class="text-sm uppercase tracking-wider font-bold text-slate-400 mb-1">Systemische Metriken</h3>
+                        <h3 class="text-sm uppercase tracking-wider font-bold text-slate-400 mb-1">Systemische Evaluation</h3>
                         <div class="flex items-baseline gap-3">
-                            <p class="text-slate-200 text-lg">Fuss-Asymmetrie-Index (FAI):</p>
+                            <p class="text-slate-200 text-lg">Foot Asymmetry Index (FAI):</p>
                             <p class="font-mono text-3xl font-bold text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]"><span id="faiValue"></span>%</p>
                         </div>
+                        <p class="text-xs text-slate-500 mt-2">Ein FAI > 10% verweist mit hoher Wahrscheinlichkeit auf eine systemische Vaskulopathie (z.B. pAVK).</p>
                     </div>
 
                     <!-- Regionale Metriken Tabelle -->
                     <div id="resultsTableContainer" class="hidden overflow-x-auto rounded-xl border border-slate-700">
-                        <table class="w-full text-left text-sm text-slate-300">
+                        <table class="w-full text-left text-sm text-slate-300 whitespace-nowrap">
                             <thead class="bg-slate-800 text-slate-200">
                                 <tr>
-                                    <th class="p-4 font-semibold">Zehe</th>
-                                    <th class="p-4 font-semibold">Befund</th>
+                                    <th class="p-4 font-semibold">Anatom. Region</th>
+                                    <th class="p-4 font-semibold">Klin. Befund</th>
                                     <th class="p-4 font-semibold">TDI (%)</th>
-                                    <th class="p-4 font-semibold">Temp (L/R)</th>
+                                    <th class="p-4 font-semibold">T_max (L/R)</th>
+                                    <th class="p-4 font-semibold">T_mean ± SD (L/R)</th>
                                     <th class="p-4 font-semibold">Fläche (px)</th>
-                                    <th class="p-4 font-semibold">Gradient</th>
+                                    <th class="p-4 font-semibold">Gradient (L/R)</th>
+                                    <th class="p-4 font-semibold">Versatz (px)</th>
                                 </tr>
                             </thead>
                             <tbody id="resultsBody" class="divide-y divide-slate-700/50 bg-slate-900/50">
-                                <!-- JS injects rows here -->
+                                <!-- JavaScript injiziert die Zeilen hier -->
                             </tbody>
                         </table>
                     </div>
+                    
+                    <!-- Wissenschaftliches Glossar -->
+                    <div id="glossaryBox" class="hidden mt-6 bg-slate-800/30 p-4 rounded-lg border border-slate-700">
+                        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Terminologisches Glossar</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-slate-400">
+                            <div><strong class="text-cyan-300">TDI:</strong> Thermal Divergence Index; prozentuale bilaterale Abweichung.</div>
+                            <div><strong class="text-cyan-300">T_max:</strong> Absolute gemessene Spitzenintensität innerhalb des ROIs.</div>
+                            <div><strong class="text-cyan-300">T_mean ± SD:</strong> Arithmetisches Mittel und Standardabweichung zur Indikation der thermischen Homogenität.</div>
+                            <div><strong class="text-cyan-300">Gradient:</strong> Steilheit des Temperaturabfalls vom Zentrum; indiziert Akutheit.</div>
+                            <div><strong class="text-cyan-300">Fläche:</strong> Akkumulierte Pixelanzahl der Entzündungsregion (oberstes Dezil).</div>
+                            <div><strong class="text-cyan-300">Versatz (Shift):</strong> Euklidische Distanz zwischen anatomischem Mittelpunkt und thermischem Schwerpunkt.</div>
+                        </div>
+                    </div>
 
-                    <!-- Raw JSON Ausagbe für Entwickler -->
+                    <!-- Raw JSON Ausgabe für Entwickler -->
                     <div class="mt-8 pt-6 border-t border-slate-700/50">
                         <div class="flex justify-between items-center mb-2">
-                            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500">API Raw Payload (JSON)</h3>
-                            <button onclick="document.getElementById('jsonOutput').classList.toggle('hidden')" class="text-xs text-cyan-500 hover:text-cyan-400 transition">Toggle View</button>
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500">Programmierschnittstelle (API Raw Payload)</h3>
+                            <button onclick="document.getElementById('jsonOutput').classList.toggle('hidden')" class="text-xs text-cyan-500 hover:text-cyan-400 transition">Ansicht umschalten</button>
                         </div>
-                        <pre id="jsonOutput" class="hidden bg-[#0d1117] p-4 rounded-lg text-[11px] text-green-400 overflow-x-auto h-48 border border-slate-800 shadow-inner leading-relaxed font-mono">Bereit für Server-Antwort...</pre>
+                        <pre id="jsonOutput" class="hidden bg-[#0d1117] p-4 rounded-lg text-[11px] text-green-400 overflow-x-auto h-48 border border-slate-800 shadow-inner leading-relaxed font-mono">Bereitschaft für Server-Antwort hergestellt...</pre>
                     </div>
                 </div>
             </div>
@@ -131,27 +147,27 @@
     </div>
 
     <script>
-        const toeNames = ["Kl. Zeh", "Zeh 4", "Mittelzeh", "Zeh 2", "Gr. Zeh"];
+        const toeNames = ["Phalanx distalis V", "Phalanx distalis IV", "Phalanx distalis III", "Phalanx distalis II", "Hallux (Phalanx distalis I)"];
 
         document.getElementById('analyzeBtn').addEventListener('click', async () => {
             const fileInput = document.getElementById('imageInput');
             if (fileInput.files.length === 0) {
-                alert('Bitte wählen Sie zuerst ein Wärmebild aus!');
+                alert('Eine ordnungsgemäße Ausführung erfordert die vorgängige Selektion eines Thermogramms.');
                 return;
             }
             
             const formData = new FormData();
             formData.append('file', fileInput.files[0]);
 
-            // UI Updates - Ladezustand
+            // Benutzeroberfläche in den Ladezustand versetzen
             document.getElementById('analyzeBtn').disabled = true;
             document.getElementById('analyzeBtn').classList.add('opacity-50', 'cursor-not-allowed');
             document.getElementById('loadingIndicator').classList.remove('hidden');
-            document.getElementById('jsonOutput').textContent = "Warte auf API Response von http://127.0.0.1:8000/analyze ...";
+            document.getElementById('jsonOutput').textContent = "Pendente API-Anfrage an http://127.0.0.1:8000/analyze ...";
             document.getElementById('jsonOutput').classList.remove('hidden');
 
             try {
-                // API Call - Keine Parameter mehr im Link, der Server regelt das!
+                // Initiierung des POST-Requests an die API
                 const response = await fetch(`http://127.0.0.1:8000/analyze`, {
                     method: 'POST',
                     body: formData
@@ -159,33 +175,33 @@
 
                 const data = await response.json();
                 
-                // Raw JSON formatieren
+                // Unformatierte JSON-Daten abbilden
                 document.getElementById('jsonOutput').textContent = JSON.stringify(data, null, 2);
 
                 if (data.error) {
-                    alert("API Fehler: " + data.error);
+                    alert("Systematischer Fehler innerhalb der API-Prozedur: " + data.error);
                 } else {
-                    // --- 1. Bild & Performance anzeigen ---
+                    // --- 1. Visualisierung & Performanzparameter ---
                     if (data.processed_image_base64) {
                         document.getElementById('resultImage').src = data.processed_image_base64;
                         document.getElementById('resultImageContainer').classList.remove('hidden');
                     }
                     if (data.processing_time_ms) {
-                        document.getElementById('processingTimeDisplay').innerHTML = `Server-Berechnungszeit: <span class="font-bold text-cyan-400">${data.processing_time_ms} ms</span>`;
+                        document.getElementById('processingTimeDisplay').innerHTML = `Server-Kalkulationsdauer: <span class="font-bold text-cyan-400">${data.processing_time_ms} ms</span>`;
                     }
 
-                    // --- 2. Globale Metriken rendern ---
+                    // --- 2. Systemische Metriken einfügen ---
                     document.getElementById('globalMetricsBox').classList.remove('hidden');
                     document.getElementById('faiValue').textContent = data.global_metrics.fai;
 
-                    // --- 3. Regionale Metriken rendern ---
+                    // --- 3. Detaillierte regionale Metriken strukturieren ---
                     const tbody = document.getElementById('resultsBody');
                     tbody.innerHTML = ''; 
                     
                     data.regional_metrics.forEach((item) => {
-                        let statusBadge = `<span class="px-2 py-1 rounded text-xs font-bold bg-green-500/20 text-green-400 border border-green-500/30">NORMAL</span>`;
+                        let statusBadge = `<span class="px-2 py-1 rounded text-xs font-bold bg-green-500/20 text-green-400 border border-green-500/30">PHYSIOLOGISCH</span>`;
                         if (item.status === "SCHWER") {
-                            statusBadge = `<span class="px-2 py-1 rounded text-xs font-bold bg-red-500/20 text-red-500 border border-red-500/30 animate-pulse">SCHWER</span>`;
+                            statusBadge = `<span class="px-2 py-1 rounded text-xs font-bold bg-red-500/20 text-red-500 border border-red-500/30 animate-pulse">PATHOLOGISCH</span>`;
                         } else if (item.status === "VERDACHT") {
                             statusBadge = `<span class="px-2 py-1 rounded text-xs font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30">VERDACHT</span>`;
                         }
@@ -196,20 +212,23 @@
                                 <td class="p-4">${statusBadge}</td>
                                 <td class="p-4 font-mono font-bold text-slate-200">${item.tdi.toFixed(2)}</td>
                                 <td class="p-4 font-mono text-slate-400">${item.t_l} / ${item.t_r}</td>
+                                <td class="p-4 font-mono text-slate-400 text-xs">${item.mean_l}±${item.std_l} / ${item.mean_r}±${item.std_r}</td>
                                 <td class="p-4 font-mono text-slate-400">${item.area_l} / ${item.area_r}</td>
                                 <td class="p-4 font-mono text-slate-400">${item.grad_l} / ${item.grad_r}</td>
+                                <td class="p-4 font-mono text-slate-400">${item.shift_l} / ${item.shift_r}</td>
                             </tr>
                         `;
                         tbody.innerHTML += row;
                     });
                     
                     document.getElementById('resultsTableContainer').classList.remove('hidden');
+                    document.getElementById('glossaryBox').classList.remove('hidden');
                 }
 
             } catch (error) {
-                document.getElementById('jsonOutput').textContent = "Fehler bei der Verbindung zum Server: " + error.message + "\n\nIst der Uvicorn Server (python api.py) gestartet?";
+                document.getElementById('jsonOutput').textContent = "Verbindungsaufbau zum Serverkomplex fehlgeschlagen: " + error.message + "\n\nIst die Serverinstanz (python api.py) ordnungsgemäß initialisiert?";
             } finally {
-                // UI Reset
+                // Rücksetzung der Benutzeroberfläche
                 document.getElementById('analyzeBtn').disabled = false;
                 document.getElementById('analyzeBtn').classList.remove('opacity-50', 'cursor-not-allowed');
                 document.getElementById('loadingIndicator').classList.add('hidden');
