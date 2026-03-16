@@ -1,5 +1,6 @@
 import time
 import base64
+import math
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import cv2
@@ -8,14 +9,13 @@ from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import uvicorn
 
-# render_diagnostics wird nicht mehr importiert, da es jetzt Teil der API ist
 from modules.geometry import find_both_feet, extract_toes_with_ai
 from modules.analysis import perform_deep_analysis
 
 app = FastAPI(
     title="IGNITE Analytics Core", 
-    version="4.0.1", 
-    description="Vollständiges Backend für die IGNITE Web-App"
+    version="4.1.0", 
+    description="Vollständiges Backend für die IGNITE Web-App mit integrierter Fehlerprüfung"
 )
 
 # CORS erlaubt es unserer lokalen index.html, mit dieser API zu quatschen
@@ -33,7 +33,29 @@ class AnalysisResponse(BaseModel):
     processing_time_ms: float
     processed_image_base64: Optional[str] = None
 
-# --- BILD-RENDER FUNKTIONEN (Jetzt exklusiv für die API) ---
+
+# --- SICHERHEITS-FUNKTIONEN (Sanity Checks) ---
+def check_anatomical_plausibility(toes_data):
+    """
+    Prüft, ob die von der KI gefundenen Punkte anatomisch überhaupt Sinn machen.
+    Verhindert falsche Diagnosen durch KI-Aussetzer.
+    """
+    if not toes_data or len(toes_data) != 5:
+        return False
+        
+    pts = [t["sensor"] for t in toes_data]
+    
+    # Prüfen, ob die KI versehentlich Punkte übereinandergelegt hat (Cluster-Fehler)
+    for i in range(len(pts)):
+        for j in range(i + 1, len(pts)):
+            dist = math.sqrt((pts[i][0] - pts[j][0])**2 + (pts[i][1] - pts[j][1])**2)
+            if dist < 8.0: # Punkte sind unnatürlich nah beieinander
+                return False
+                
+    return True
+
+
+# --- BILD-RENDER FUNKTIONEN ---
 def render_diagnostics(image, analysis_payload):
     """Malt die Diagnose-Boxen in das Bild basierend auf den tiefen Metriken."""
     if "error" in analysis_payload and analysis_payload["error"]:
@@ -96,8 +118,7 @@ async def process_thermogram(
     severe_th: float = Form(15.0)
 ):
     """
-    Nimmt das Bild und die Schieberegler-Werte von der Webseite an, 
-    analysiert alles und schickt Daten + gemaltes Bild zurück.
+    Nimmt das Bild, prüft die KI auf Fehler und rechnet die Metriken exakt aus.
     """
     start_time = time.perf_counter()
     
@@ -113,17 +134,28 @@ async def process_thermogram(
         img_copy = img_bgr.copy()
         gray_img = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
         
-        # 2. KI Segmentierung
-        left_contour, right_contour, foot_mask = find_both_feet(gray_img)
-        if left_contour is None or right_contour is None:
-            raise HTTPException(status_code=422, detail="Füße nicht gefunden. Kontrast zu schlecht.")
-            
-        left_toes = extract_toes_with_ai(left_contour, gray_img, foot_mask)
-        right_toes = extract_toes_with_ai(right_contour, gray_img, foot_mask)
+        # NEU: Bilateraler Filter zur präzisen Rauschunterdrückung
+        # Erhält harte Kanten (Entzündungsränder) aber glättet Kamera-Bildrauschen
+        clean_gray = cv2.bilateralFilter(gray_img, d=9, sigmaColor=75, sigmaSpace=75)
         
-        # 3. Deep Analysis (Nutzt die neue geschwollene Methode)
+        # 2. KI Segmentierung
+        left_contour, right_contour, foot_mask = find_both_feet(clean_gray)
+        if left_contour is None or right_contour is None:
+            raise HTTPException(status_code=422, detail="Füße nicht gefunden. Kontrast im Bild zu schlecht.")
+            
+        left_toes = extract_toes_with_ai(left_contour, clean_gray, foot_mask)
+        right_toes = extract_toes_with_ai(right_contour, clean_gray, foot_mask)
+        
+        # NEU: KI Sanity Check! Vertraue nicht blind!
+        if not check_anatomical_plausibility(left_toes) or not check_anatomical_plausibility(right_toes):
+            raise HTTPException(
+                status_code=422, 
+                detail="Die KI ist sich unsicher (Punkte überlappen sich). Bitte versuche ein anderes Bild."
+            )
+        
+        # 3. Deep Analysis (Nutzt jetzt das rauschfreie Bild für viel genauere Werte)
         analysis_payload = perform_deep_analysis(
-            left_toes, right_toes, gray_img, foot_mask, warn_th, severe_th
+            left_toes, right_toes, clean_gray, foot_mask, warn_th, severe_th
         )
         
         if "error" in analysis_payload and analysis_payload["error"]:
@@ -146,8 +178,9 @@ async def process_thermogram(
         )
         
     except Exception as e:
+        # Fehlermeldungen direkt ans Frontend weiterleiten
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
-    print("🚀 IGNITE API SERVER LÄUFT! (Drücke STRG+C zum Beenden)")
+    print("🚀 IGNITE API SERVER LÄUFT! (Mit integrierter Fehlererkennung)")
     uvicorn.run("api:app", host="127.0.0.1", port=8000, log_level="info")
