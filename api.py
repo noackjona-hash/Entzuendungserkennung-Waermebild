@@ -16,11 +16,10 @@ from modules.analysis import perform_deep_analysis
 
 app = FastAPI(
     title="IGNITE Analytics Core", 
-    version="5.0.0", 
-    description="Vollständiges Backend & Webserver für die IGNITE App (Raspberry Pi Edition)"
+    version="5.1.0", 
+    description="Backend & Webserver für die IGNITE App (Clean Architecture)"
 )
 
-# CORS für Netzwerk-Zugriffe erlauben
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -36,19 +35,18 @@ class AnalysisResponse(BaseModel):
     processed_image_base64: Optional[str] = None
 
 
-# --- NEU: WEBSERVER ROUTE ---
+# --- WEBSERVER ROUTE (Angepasst für den /static Ordner) ---
 @app.get("/")
 async def serve_frontend():
     """
-    Diese Route liefert deine Webseite (index.html) aus. 
-    So hostet der Raspberry Pi das Frontend und Backend gleichzeitig!
+    Liefert das Frontend aus dem neuen, aufgeräumten 'static' Ordner.
     """
-    if os.path.exists("index.html"):
-        return FileResponse("index.html")
-    return {"error": "index.html nicht gefunden! Stelle sicher, dass sie im selben Ordner liegt."}
+    if os.path.exists("static/index.html"):
+        return FileResponse("static/index.html")
+    return {"error": "Dashboard nicht gefunden! Stelle sicher, dass index.html im Ordner 'static/' liegt."}
 
 
-# --- SICHERHEITS-FUNKTIONEN (Sanity Checks) ---
+# --- SICHERHEITS-FUNKTIONEN ---
 def check_anatomical_plausibility(toes_data):
     if not toes_data or len(toes_data) != 5:
         return False
@@ -110,7 +108,6 @@ def _draw_normal_marker(img, pt, temp):
     cv2.circle(img, pt, 6, (0, 255, 0), -1)
     cv2.putText(img, str(temp), (pt[0]-15, pt[1]-15), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 2)
 
-
 # --- API ROUTEN ---
 @app.post("/api/v1/analyze", response_model=AnalysisResponse)
 async def process_thermogram(
@@ -170,6 +167,5 @@ async def process_thermogram(
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
-    print("🚀 IGNITE API & WEBSERVER LÄUFT! (Raspberry Pi Edition)")
-    # WICHTIG: host="0.0.0.0" bedeutet, dass er aus dem ganzen WLAN erreichbar ist!
+    print("🚀 IGNITE API SERVER LÄUFT! (Clean Architecture)")
     uvicorn.run("api:app", host="0.0.0.0", port=8000, log_level="info")
