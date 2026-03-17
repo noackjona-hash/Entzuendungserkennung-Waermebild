@@ -21,7 +21,7 @@
             <h1 class="text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-blue-600 drop-shadow-lg">
                 IGNITE <span class="text-white">WEB APP</span>
             </h1>
-            <p class="text-slate-400 mt-2 text-lg">Professionelle Thermografie-Diagnostik</p>
+            <p class="text-slate-400 mt-2 text-lg">Professionelle Thermografie-Diagnostik (Edge Device)</p>
         </header>
 
         <div class="grid grid-cols-1 xl:grid-cols-4 gap-6">
@@ -54,7 +54,7 @@
 
                 <div id="loadingIndicator" class="hidden mt-4 text-center">
                     <div class="inline-block w-6 h-6 border-4 border-sky-500 border-t-transparent rounded-full animate-spin"></div>
-                    <p class="text-sky-400 animate-pulse text-sm mt-2">API rechnet...</p>
+                    <p class="text-sky-400 animate-pulse text-sm mt-2">Raspberry Pi rechnet...</p>
                 </div>
             </div>
 
@@ -125,7 +125,8 @@
             document.getElementById('loadingIndicator').classList.remove('hidden');
 
             try {
-                const response = await fetch(`http://127.0.0.1:8000/api/v1/analyze`, {
+                // NEU: relativer Pfad! So fragt die Webseite automatisch den Server, von dem sie geladen wurde (den Raspberry Pi).
+                const response = await fetch(`/api/v1/analyze`, {
                     method: 'POST',
                     body: formData
                 });
@@ -137,7 +138,7 @@
                 // Bild & Speed
                 document.getElementById('resultImage').src = data.processed_image_base64;
                 document.getElementById('resultImageContainer').classList.remove('hidden');
-                document.getElementById('processingTimeDisplay').innerText = `API Speed: ${data.processing_time_ms} ms`;
+                document.getElementById('processingTimeDisplay').innerText = `Pi Speed: ${data.processing_time_ms} ms`;
 
                 // Globale Metriken
                 document.getElementById('faiValue').textContent = data.global_metrics.foot_asymmetry_index_percentage;
@@ -172,7 +173,7 @@
                 document.getElementById('dataContainer').classList.remove('hidden');
 
             } catch (error) {
-                alert("Fehler: " + error.message + "\n\nLäuft die API (python api.py)?");
+                alert("Fehler: " + error.message + "\n\nLäuft die API auf dem Pi?");
             } finally {
                 btn.disabled = false;
                 btn.classList.remove('opacity-50');

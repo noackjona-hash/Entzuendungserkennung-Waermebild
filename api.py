@@ -3,22 +3,24 @@ import base64
 import math
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 import cv2
 import numpy as np
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import uvicorn
+import os
 
 from modules.geometry import find_both_feet, extract_toes_with_ai
 from modules.analysis import perform_deep_analysis
 
 app = FastAPI(
     title="IGNITE Analytics Core", 
-    version="4.1.0", 
-    description="Vollständiges Backend für die IGNITE Web-App mit integrierter Fehlerprüfung"
+    version="5.0.0", 
+    description="Vollständiges Backend & Webserver für die IGNITE App (Raspberry Pi Edition)"
 )
 
-# CORS erlaubt es unserer lokalen index.html, mit dieser API zu quatschen
+# CORS für Netzwerk-Zugriffe erlauben
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -34,36 +36,36 @@ class AnalysisResponse(BaseModel):
     processed_image_base64: Optional[str] = None
 
 
+# --- NEU: WEBSERVER ROUTE ---
+@app.get("/")
+async def serve_frontend():
+    """
+    Diese Route liefert deine Webseite (index.html) aus. 
+    So hostet der Raspberry Pi das Frontend und Backend gleichzeitig!
+    """
+    if os.path.exists("index.html"):
+        return FileResponse("index.html")
+    return {"error": "index.html nicht gefunden! Stelle sicher, dass sie im selben Ordner liegt."}
+
+
 # --- SICHERHEITS-FUNKTIONEN (Sanity Checks) ---
 def check_anatomical_plausibility(toes_data):
-    """
-    Prüft, ob die von der KI gefundenen Punkte anatomisch überhaupt Sinn machen.
-    Verhindert falsche Diagnosen durch KI-Aussetzer.
-    """
     if not toes_data or len(toes_data) != 5:
         return False
-        
     pts = [t["sensor"] for t in toes_data]
-    
-    # Prüfen, ob die KI versehentlich Punkte übereinandergelegt hat (Cluster-Fehler)
     for i in range(len(pts)):
         for j in range(i + 1, len(pts)):
             dist = math.sqrt((pts[i][0] - pts[j][0])**2 + (pts[i][1] - pts[j][1])**2)
-            if dist < 8.0: # Punkte sind unnatürlich nah beieinander
+            if dist < 8.0:
                 return False
-                
     return True
-
 
 # --- BILD-RENDER FUNKTIONEN ---
 def render_diagnostics(image, analysis_payload):
-    """Malt die Diagnose-Boxen in das Bild basierend auf den tiefen Metriken."""
     if "error" in analysis_payload and analysis_payload["error"]:
         return image
-
     overlay = image.copy()
     regional_data = analysis_payload.get("regional_metrics", [])
-
     for data in regional_data:
         pt_l = data["left_hemisphere"]["coordinates"]
         pt_r = data["right_hemisphere"]["coordinates"]
@@ -74,7 +76,6 @@ def render_diagnostics(image, analysis_payload):
         temp_l = data["left_hemisphere"]["metrics"]["thermo_statistics"]["max_temp"]
         temp_r = data["right_hemisphere"]["metrics"]["thermo_statistics"]["max_temp"]
 
-        # Fadenkreuze zeichnen
         cv2.drawMarker(overlay, pt_l, (255, 255, 255), cv2.MARKER_CROSS, 8, 1)
         cv2.circle(overlay, pt_l, 2, (255, 255, 255), -1)
         cv2.drawMarker(overlay, pt_r, (255, 255, 255), cv2.MARKER_CROSS, 8, 1)
@@ -117,13 +118,8 @@ async def process_thermogram(
     warn_th: float = Form(8.0), 
     severe_th: float = Form(15.0)
 ):
-    """
-    Nimmt das Bild, prüft die KI auf Fehler und rechnet die Metriken exakt aus.
-    """
     start_time = time.perf_counter()
-    
     try:
-        # 1. Bild laden
         contents = await file.read()
         nparr = np.frombuffer(contents, np.uint8)
         img_bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -134,11 +130,8 @@ async def process_thermogram(
         img_copy = img_bgr.copy()
         gray_img = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
         
-        # NEU: Bilateraler Filter zur präzisen Rauschunterdrückung
-        # Erhält harte Kanten (Entzündungsränder) aber glättet Kamera-Bildrauschen
         clean_gray = cv2.bilateralFilter(gray_img, d=9, sigmaColor=75, sigmaSpace=75)
         
-        # 2. KI Segmentierung
         left_contour, right_contour, foot_mask = find_both_feet(clean_gray)
         if left_contour is None or right_contour is None:
             raise HTTPException(status_code=422, detail="Füße nicht gefunden. Kontrast im Bild zu schlecht.")
@@ -146,14 +139,12 @@ async def process_thermogram(
         left_toes = extract_toes_with_ai(left_contour, clean_gray, foot_mask)
         right_toes = extract_toes_with_ai(right_contour, clean_gray, foot_mask)
         
-        # NEU: KI Sanity Check! Vertraue nicht blind!
         if not check_anatomical_plausibility(left_toes) or not check_anatomical_plausibility(right_toes):
             raise HTTPException(
                 status_code=422, 
                 detail="Die KI ist sich unsicher (Punkte überlappen sich). Bitte versuche ein anderes Bild."
             )
         
-        # 3. Deep Analysis (Nutzt jetzt das rauschfreie Bild für viel genauere Werte)
         analysis_payload = perform_deep_analysis(
             left_toes, right_toes, clean_gray, foot_mask, warn_th, severe_th
         )
@@ -161,10 +152,8 @@ async def process_thermogram(
         if "error" in analysis_payload and analysis_payload["error"]:
             raise HTTPException(status_code=500, detail=analysis_payload["error"])
             
-        # 4. Bild rendern (Rote/Orange Boxen malen)
         final_img = render_diagnostics(img_copy, analysis_payload)
         
-        # 5. Bild für die Webseite verpacken (Base64)
         _, buffer = cv2.imencode('.jpg', final_img, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
         img_base64 = base64.b64encode(buffer).decode('utf-8')
         
@@ -178,9 +167,9 @@ async def process_thermogram(
         )
         
     except Exception as e:
-        # Fehlermeldungen direkt ans Frontend weiterleiten
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
-    print("🚀 IGNITE API SERVER LÄUFT! (Mit integrierter Fehlererkennung)")
-    uvicorn.run("api:app", host="127.0.0.1", port=8000, log_level="info")
+    print("🚀 IGNITE API & WEBSERVER LÄUFT! (Raspberry Pi Edition)")
+    # WICHTIG: host="0.0.0.0" bedeutet, dass er aus dem ganzen WLAN erreichbar ist!
+    uvicorn.run("api:app", host="0.0.0.0", port=8000, log_level="info")
