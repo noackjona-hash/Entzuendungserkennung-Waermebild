@@ -4,93 +4,85 @@ import numpy as np
 import os
 import joblib
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
 
-from modules.loader import load_and_preprocess
-from modules.geometry import find_both_feet
+# ROBUSTE PFADE
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+AUGMENTED_DIR = os.path.join(BASE_DIR, "dataset", "augmented_images")
+AUGMENTED_LABEL_FILE = os.path.join(BASE_DIR, "dataset", "labels_augmented.csv")
+MODEL_SAVE_PATH = os.path.join(BASE_DIR, "dataset", "ignite_ai_model.pkl")
 
-def extract_features_and_targets(csv_path, img_dir):
-    df = pd.read_csv(csv_path)
+def extract_features(image):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     
-    X_data = [] # Hier kommen die Fuss-Formen rein (Hu-Moments)
-    Y_data = [] # Hier kommen die relativen Zehen-Koordinaten rein
+    kernel = np.ones((5,5), np.uint8)
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
     
-    print(f"Lese {len(df)} Trainingsbilder ein...")
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours: return None
+        
+    largest_contour = max(contours, key=cv2.contourArea)
+    moments = cv2.moments(largest_contour)
+    hu_moments = cv2.HuMoments(moments).flatten()
+    
+    for i in range(7):
+        if hu_moments[i] != 0:
+            hu_moments[i] = -1 * np.sign(hu_moments[i]) * np.log10(np.abs(hu_moments[i]))
+            
+    return hu_moments
+
+def main():
+    if not os.path.exists(AUGMENTED_LABEL_FILE):
+        print(f"Fehler: {AUGMENTED_LABEL_FILE} nicht gefunden.")
+        print("Bitte zuerst augment_data.py ausführen!")
+        return
+
+    print("Lade Datensatz und extrahiere Features...")
+    df = pd.read_csv(AUGMENTED_LABEL_FILE)
+    
+    X, y = [], []
     
     for index, row in df.iterrows():
-        img_path = os.path.join(img_dir, row['filename'])
-        _, gray = load_and_preprocess(img_path)
+        img_path = os.path.join(AUGMENTED_DIR, row['filename'])
         
-        if gray is None:
+        # --- ROBUSTER BILD-IMPORT FÜR UMLAUTE ---
+        try:
+            with open(img_path, "rb") as f:
+                img_bytes = bytearray(f.read())
+            nparr = np.asarray(img_bytes, dtype=np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        except Exception:
             continue
             
-        left_contour, right_contour, _ = find_both_feet(gray)
+        if img is None: continue
         
-        if left_contour is not None and right_contour is not None:
-            # --- LINKER FUSS ---
-            x_l, y_l, w_l, h_l = cv2.boundingRect(left_contour)
-            moments_l = cv2.moments(left_contour)
-            hu_l = cv2.HuMoments(moments_l).flatten()
-            
-            # Features: Die 7 Hu-Moments + das Seitenverhältnis des Fusses
-            features_l = list(hu_l) + [w_l / h_l]
-            X_data.append(features_l)
-            
-            # Targets: Die relativen Koordinaten der 5 Zehen innerhalb der Bounding Box
-            targets_l = []
-            for i in range(1, 6):
-                # Wissenschaftliche Normalisierung auf Werte zwischen 0.0 und 1.0
-                rel_x = (row[f'L_Zeh{i}_x'] - x_l) / w_l
-                rel_y = (row[f'L_Zeh{i}_y'] - y_l) / h_l
-                targets_l.extend([rel_x, rel_y])
-            Y_data.append(targets_l)
-            
-            # --- RECHTER FUSS ---
-            x_r, y_r, w_r, h_r = cv2.boundingRect(right_contour)
-            moments_r = cv2.moments(right_contour)
-            hu_r = cv2.HuMoments(moments_r).flatten()
-            
-            features_r = list(hu_r) + [w_r / h_r]
-            X_data.append(features_r)
-            
-            targets_r = []
-            for i in range(1, 6):
-                rel_x = (row[f'R_Zeh{i}_x'] - x_r) / w_r
-                rel_y = (row[f'R_Zeh{i}_y'] - y_r) / h_r
-                targets_r.extend([rel_x, rel_y])
-            Y_data.append(targets_r)
+        features = extract_features(img)
+        if features is not None:
+            X.append(features)
+            coords = [row[f'x{i}'] for i in range(10)] + [row[f'y{i}'] for i in range(10)]
+            y.append(coords)
 
-    return np.array(X_data), np.array(Y_data)
+    if len(X) == 0:
+        print("Fehler: Konnte keine Features extrahieren. Sind die Bilder im Ordner?")
+        return
+
+    X, y = np.array(X), np.array(y)
+    print(f"Features extrahiert. Datensatz-Größe: {X.shape}")
+    
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.15, random_state=42)
+    
+    print("Trainiere Random Forest Regressor... Das kann einen Moment dauern.")
+    model = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
+    model.fit(X_train, y_train)
+    
+    y_pred = model.predict(X_test)
+    mse = mean_squared_error(y_test, y_pred)
+    
+    print(f"Training abgeschlossen! MSE: {mse:.2f}")
+    joblib.dump(model, MODEL_SAVE_PATH)
+    print(f"Modell gespeichert unter {MODEL_SAVE_PATH}")
 
 if __name__ == "__main__":
-    print("=== IGNITE AI TRAINER ===")
-    dataset_dir = "dataset"
-    
-    # --- UPDATE: Nutze die neuen augmentierten Daten ---
-    # CSV_FILE VON labels.csv AUF labels_augmented.csv GEAENDERT
-    csv_file = os.path.join(dataset_dir, "labels_augmented.csv") 
-    
-    # IMG_DIR VON images AUF augmented_images GEAENDERT
-    img_dir = os.path.join(dataset_dir, "augmented_images") 
-    
-    if not os.path.exists(csv_file):
-        print(f"Fehler: Keine augmentierten Trainingsdaten ({csv_file}) gefunden!")
-        exit()
-        
-    X, Y = extract_features_and_targets(csv_file, img_dir)
-    
-    if len(X) == 0:
-        print("Fehler: Konnte keine auswertbaren Fuesse in den Bildern finden.")
-        exit()
-        
-    print(f"Trainingsdaten erfolgreich extrahiert. {len(X)} Fuesse gefunden.")
-    print("Trainiere Random Forest Regressor Model...")
-    
-    # Die eigentliche KI: 100 Entscheidungsbaeume lernen die Anatomie
-    model = RandomForestRegressor(n_estimators=100, random_state=42)
-    model.fit(X, Y)
-    
-    # KI-Gehirn speichern
-    model_path = os.path.join(dataset_dir, "ignite_ai_model.pkl")
-    joblib.dump(model, model_path)
-    
-    print(f"ERFOLG! KI-Modell wurde trainiert und gespeichert unter: {model_path}")
+    main()

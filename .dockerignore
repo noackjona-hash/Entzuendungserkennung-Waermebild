@@ -1,5 +1,11 @@
 .venv/
 pycache/
-*.pyc
+.pyc
+.DS_Store
 .git/
 .gitignore
+tools/
+dataset/images/
+dataset/augmented_images/
+dataset/.csv
+inputimg/

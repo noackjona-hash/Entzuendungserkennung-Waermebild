@@ -1,17 +1,12 @@
-# Virtuelle Umgebung
+
 .venv/
-venv/
-env/
-
-# Python Cache-Dateien (die erstellt Python automatisch im Hintergrund)
-__pycache__/
+pycache/
 *.pyc
-*.pyo
-*.pyd
-
-# Betriebssystem-Dateien (falls du mal an einem Mac arbeitest)
 .DS_Store
-Thumbs.db
 
-# Optionale lokale Testbilder (falls du Bilder nicht auf GitHub haben willst)
-# inputimg/
+dataset/images/
+dataset/augmented_images/
+dataset/*.csv
+inputimg/
+
+!dataset/ignite_ai_model.pkl

@@ -1,80 +1,94 @@
 import cv2
 import numpy as np
-import os
 import joblib
+import os
 
-# --- KI MODELL LADEN ---
-MODEL_PATH = os.path.join("dataset", "ignite_ai_model.pkl")
-try:
-    if os.path.exists(MODEL_PATH):
+MODEL_PATH = "dataset/ignite_ai_model.pkl"
+ai_model = None
+
+def load_ai_model():
+    global ai_model
+    if ai_model is None and os.path.exists(MODEL_PATH):
         ai_model = joblib.load(MODEL_PATH)
-        print("Erfolg: KI-Modell wurde in den Arbeitsspeicher geladen.")
-    else:
-        ai_model = None
-except Exception as e:
-    print(f"Fehler beim Laden des KI-Modells: {e}")
-    ai_model = None
+    return ai_model
 
 def find_both_feet(gray_img):
-    blurred = cv2.GaussianBlur(gray_img, (11, 11), 0)
-    _, mask = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    """
+    Segmentiert die Füße vom Hintergrund mittels Adaptive Otsu Thresholding.
+    """
+    blurred = cv2.GaussianBlur(gray_img, (5, 5), 0)
+    _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     
-    kernel = np.ones((9,9), np.uint8)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+    kernel = np.ones((5,5), np.uint8)
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
     
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
     if len(contours) < 2:
-        return None, None, None
+        return None, None, thresh
         
+    # Die zwei größten Konturen sortiert nach Größe finden
     sorted_contours = sorted(contours, key=cv2.contourArea, reverse=True)[:2]
-    sorted_by_x = sorted(sorted_contours, key=lambda c: cv2.boundingRect(c)[0])
     
-    return sorted_by_x[0], sorted_by_x[1], mask
-
-def extract_toes_with_ai(contour, gray_img, foot_mask):
-    if ai_model is None:
-        return None 
-
-    # Feature-Extraktion (Die Fuss-DNA berechnen)
-    x, y, w, h = cv2.boundingRect(contour)
-    moments = cv2.moments(contour)
-    hu = cv2.HuMoments(moments).flatten()
-    features = list(hu) + [w / h] 
-
-    # KI Vorhersage
-    prediction = ai_model.predict([features])[0]
-
-    tips_with_data = []
+    # Sortiere sie von links nach rechts (X-Koordinate des Bounding Rectangles)
+    sorted_lr = sorted(sorted_contours, key=lambda c: cv2.boundingRect(c)[0])
     
-    for i in range(5):
-        rel_x = prediction[i * 2]
-        rel_y = prediction[i * 2 + 1]
-        
-        abs_x = int(x + (rel_x * w))
-        abs_y = int(y + (rel_y * h))
-        
-        abs_x = max(0, min(gray_img.shape[1] - 1, abs_x))
-        abs_y = max(0, min(gray_img.shape[0] - 1, abs_y))
+    return sorted_lr[0], sorted_lr[1], thresh
 
-        # Deep Sensor: Lokale Hitze um den vorhergesagten Punkt finden
-        roi_size = 20
-        x_start, x_end = max(0, abs_x - roi_size), min(gray_img.shape[1], abs_x + roi_size)
-        y_start, y_end = max(0, abs_y - roi_size), min(gray_img.shape[0], abs_y + roi_size)
+def extract_toes_with_ai(foot_contour, gray_img, foot_mask):
+    """
+    Nutzt das trainierte Modell, um die Zehen vorherzusagen und sucht dann im Umkreis
+    von 20 Pixeln nach dem exakten absoluten Hitzemaximum.
+    """
+    model = load_ai_model()
+    if model is None:
+        raise ValueError("KI Modell nicht gefunden. Bitte trainiere die KI zuerst!")
         
-        roi_gray = gray_img[y_start:y_end, x_start:x_end]
-        roi_mask = foot_mask[y_start:y_end, x_start:x_end] 
-        
-        if roi_gray.size > 0:
-            _, max_val, _, max_loc_roi = cv2.minMaxLoc(roi_gray, mask=roi_mask)
-            temp = int(max_val)
-            meas_pt = (x_start + max_loc_roi[0], y_start + max_loc_roi[1])
-        else:
-            temp, meas_pt = int(gray_img[abs_y, abs_x]), (abs_x, abs_y)
+    # Hu-Momente der Kontur berechnen (exakt wie beim Training)
+    moments = cv2.moments(foot_contour)
+    hu_moments = cv2.HuMoments(moments).flatten()
+    
+    for i in range(7):
+        if hu_moments[i] != 0:
+            hu_moments[i] = -1 * np.sign(hu_moments[i]) * np.log10(np.abs(hu_moments[i]))
             
-        tips_with_data.append({"tip": (abs_x, abs_y), "temp": temp, "sensor": meas_pt})
-        
-    tips_with_data = sorted(tips_with_data, key=lambda item: item["sensor"][0])
+    # Inferenz! Die KI schätzt die Positionen.
+    prediction = model.predict([hu_moments])[0]
     
-    return tips_with_data
+    predicted_toes = []
+    # Da die KI 10 X und 10 Y Werte zurückgibt (wir nehmen hier einfach an, 
+    # dass das Modell robust genug ist, uns die Punkte für DEN Fuß zurückzugeben, 
+    # der gerade übergeben wurde, indem wir die Punkte herausfiltern, die im Bounding Box liegen)
+    x_coords, y_coords, w, h = cv2.boundingRect(foot_contour)
+    
+    # Um es hier für die Laufzeit sicher zu machen, durchsuchen wir die 10 KI Punkte
+    # nach den 5, die tatsächlich in der Bounding-Box dieses Fußes liegen.
+    valid_points = []
+    for i in range(10):
+        px = int(prediction[i])
+        py = int(prediction[i+10])
+        if x_coords <= px <= x_coords + w:
+            valid_points.append((px, py))
+            
+    # Nehmen wir die ersten 5 gefundenen Punkte
+    valid_points = valid_points[:5]
+    
+    # Deep Sensor Logik (Suche das Hitzemaximum im Radius)
+    for px, py in valid_points:
+        r = 20
+        x_s, x_e = max(0, px-r), min(gray_img.shape[1], px+r)
+        y_s, y_e = max(0, py-r), min(gray_img.shape[0], py+r)
+        
+        roi_gray = gray_img[y_s:y_e, x_s:x_e]
+        roi_mask = foot_mask[y_s:y_e, x_s:x_e]
+        
+        if roi_gray.size > 0 and np.count_nonzero(roi_mask) > 0:
+            _, max_val, _, max_loc = cv2.minMaxLoc(roi_gray, mask=roi_mask)
+            real_x = x_s + max_loc[0]
+            real_y = y_s + max_loc[1]
+            predicted_toes.append({"sensor": (real_x, real_y), "temp": max_val})
+        else:
+            predicted_toes.append({"sensor": (px, py), "temp": float(gray_img[py, px]) if py<gray_img.shape[0] and px<gray_img.shape[1] else 0})
+            
+    return predicted_toes

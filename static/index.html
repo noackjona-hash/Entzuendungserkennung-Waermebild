@@ -11,91 +11,53 @@
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: #1e293b; rounded: 4px; }
         ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #38bdf8; }
     </style>
 </head>
 <body class="min-h-screen p-4 md:p-8 font-sans bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPgo8cmVjdCB3aWR0aD0iNCIgaGVpZ2h0PSI0IiBmaWxsPSIjMGYxNzJhIj48L3JlY3Q+Cjxwb2x5Z29uIGZpbGw9IiMxZTI5M2IiIHBvaW50cz0iNCAwIDAgNCA0IDQiPjwvcG9seWdvbj4KPC9zdmc+')]">
 
     <div class="max-w-[95rem] mx-auto">
         <header class="mb-8 text-center">
-            <h1 class="text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-blue-600 drop-shadow-lg">
-                IGNITE <span class="text-white">WEB APP</span>
-            </h1>
-            <p class="text-slate-400 mt-2 text-lg">Professionelle Thermografie-Diagnostik (Edge Device)</p>
+            <h1 class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-blue-600 drop-shadow-lg">IGNITE <span class="text-white">WEB APP</span></h1>
+            <p class="text-slate-400 mt-2 text-lg">Professionelle Edge-Thermografie-Diagnostik</p>
         </header>
 
         <div class="grid grid-cols-1 xl:grid-cols-4 gap-6">
-            
-            <!-- Upload & Settings Panel -->
             <div class="glass-panel p-6 rounded-2xl col-span-1 h-fit shadow-xl">
                 <h2 class="text-xl font-bold mb-6 text-sky-400">Neuer Scan</h2>
+                <input type="file" id="imageInput" accept="image/*" class="block w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-slate-800 file:text-sky-400 cursor-pointer bg-slate-900 rounded-lg border border-slate-700 mb-6">
                 
-                <div class="mb-6">
-                    <label class="block text-sm text-slate-300 mb-2">Wärmebild (.jpg, .png)</label>
-                    <input type="file" id="imageInput" accept="image/*" class="block w-full text-sm text-slate-400
-                        file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0
-                        file:text-sm file:font-bold file:bg-slate-800 file:text-sky-400
-                        hover:file:bg-slate-700 cursor-pointer bg-slate-900 rounded-lg border border-slate-700">
-                </div>
-
-                <div class="mb-4">
-                    <label class="block text-sm text-slate-300 mb-1">Verdacht ab TDI (%) <span id="warnVal" class="text-sky-400">8.0</span></label>
-                    <input type="range" id="warnTh" min="2" max="20" step="0.5" value="8.0" class="w-full accent-sky-500">
-                </div>
-
-                <div class="mb-8">
-                    <label class="block text-sm text-slate-300 mb-1">Schwer ab TDI (%) <span id="severeVal" class="text-red-400">15.0</span></label>
-                    <input type="range" id="severeTh" min="10" max="40" step="0.5" value="15.0" class="w-full accent-red-500">
-                </div>
-
-                <button id="analyzeBtn" class="w-full bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg shadow-sky-500/30">
-                    Bild analysieren
-                </button>
-
-                <div id="loadingIndicator" class="hidden mt-4 text-center">
-                    <div class="inline-block w-6 h-6 border-4 border-sky-500 border-t-transparent rounded-full animate-spin"></div>
-                    <p class="text-sky-400 animate-pulse text-sm mt-2">Raspberry Pi rechnet...</p>
-                </div>
+                <label class="block text-sm text-slate-300 mb-1">Verdacht (TDI %) <span id="warnVal" class="text-sky-400">8.0</span></label>
+                <input type="range" id="warnTh" min="2" max="20" step="0.5" value="8.0" class="w-full mb-4 accent-sky-500">
+                
+                <label class="block text-sm text-slate-300 mb-1">Schwer (TDI %) <span id="severeVal" class="text-red-400">15.0</span></label>
+                <input type="range" id="severeTh" min="10" max="40" step="0.5" value="15.0" class="w-full mb-8 accent-red-500">
+                
+                <button id="analyzeBtn" class="w-full bg-gradient-to-r from-sky-600 to-blue-600 text-white font-bold py-3 px-4 rounded-xl shadow-lg">Analysieren</button>
             </div>
 
-            <!-- Image & Results Panel -->
             <div class="col-span-1 xl:col-span-3 space-y-6">
-                
-                <!-- Bild Resultat -->
                 <div id="resultImageContainer" class="hidden glass-panel p-6 rounded-2xl shadow-xl">
                     <div class="flex justify-between items-center mb-4">
                         <h2 class="text-xl font-bold text-sky-400">KI Visualisierung</h2>
-                        <span id="processingTimeDisplay" class="bg-slate-800 text-sky-300 text-xs px-3 py-1 rounded-full border border-slate-700"></span>
+                        <span id="speedDisplay" class="bg-slate-800 text-sky-300 text-xs px-3 py-1 rounded-full border border-slate-700"></span>
                     </div>
-                    <div class="rounded-xl overflow-hidden bg-black border border-slate-700 flex justify-center">
-                        <img id="resultImage" src="" alt="Scan Result" class="max-h-[450px] object-contain w-full">
-                    </div>
+                    <img id="resultImage" class="max-h-[450px] object-contain w-full bg-black rounded-xl border border-slate-700">
                 </div>
 
-                <!-- Daten Tabelle -->
                 <div id="dataContainer" class="hidden glass-panel p-6 rounded-2xl shadow-xl">
                     <div class="flex items-center gap-4 mb-6 bg-slate-800/50 p-4 rounded-xl border border-slate-700">
-                        <div class="text-sm text-slate-400 uppercase font-bold tracking-wider">Fuss-Asymmetrie-Index (FAI)</div>
-                        <div class="text-3xl font-black text-yellow-400 drop-shadow-md"><span id="faiValue"></span>%</div>
+                        <div class="text-sm text-slate-400 font-bold">Fuss-Asymmetrie-Index (FAI)</div>
+                        <div class="text-3xl font-black text-yellow-400"><span id="faiValue"></span>%</div>
                     </div>
-
                     <div class="overflow-x-auto rounded-xl border border-slate-700">
                         <table class="w-full text-left text-sm text-slate-300 whitespace-nowrap">
                             <thead class="bg-slate-800 text-slate-200">
                                 <tr>
-                                    <th class="p-3 font-semibold">Zehe</th>
-                                    <th class="p-3 font-semibold">Befund</th>
-                                    <th class="p-3 font-semibold">TDI (%)</th>
-                                    <th class="p-3 font-semibold">Temp Max (L/R)</th>
-                                    <th class="p-3 font-semibold">Fläche px (L/R)</th>
-                                    <th class="p-3 font-semibold">Gradient (L/R)</th>
-                                    <th class="p-3 font-semibold">Zirkularität (L/R)</th>
-                                    <th class="p-3 font-semibold">Zentrums-Versatz (L/R)</th>
+                                    <th class="p-3">Zehe</th><th class="p-3">Befund</th><th class="p-3">TDI (%)</th>
+                                    <th class="p-3">Temp Max (L/R)</th><th class="p-3">Fläche (L/R)</th><th class="p-3">Gradient (L/R)</th>
                                 </tr>
                             </thead>
-                            <tbody id="resultsBody" class="divide-y divide-slate-700/50 bg-slate-900/50">
-                                <!-- JS füllt das hier -->
-                            </tbody>
+                            <tbody id="resultsBody" class="divide-y divide-slate-700/50 bg-slate-900/50"></tbody>
                         </table>
                     </div>
                 </div>
@@ -105,79 +67,57 @@
 
     <script>
         const toeNames = ["Kl. Zeh", "Zeh 4", "Mittelzeh", "Zeh 2", "Gr. Zeh"];
-
-        // Slider Updates
-        document.getElementById('warnTh').addEventListener('input', (e) => document.getElementById('warnVal').innerText = e.target.value);
-        document.getElementById('severeTh').addEventListener('input', (e) => document.getElementById('severeVal').innerText = e.target.value);
+        document.getElementById('warnTh').addEventListener('input', e => document.getElementById('warnVal').innerText = e.target.value);
+        document.getElementById('severeTh').addEventListener('input', e => document.getElementById('severeVal').innerText = e.target.value);
 
         document.getElementById('analyzeBtn').addEventListener('click', async () => {
-            const fileInput = document.getElementById('imageInput');
-            if (fileInput.files.length === 0) return alert('Bitte ein Bild auswählen!');
+            const file = document.getElementById('imageInput').files[0];
+            if (!file) return alert('Bitte ein Bild auswählen!');
             
-            const formData = new FormData();
-            formData.append('file', fileInput.files[0]);
-            formData.append('warn_th', document.getElementById('warnTh').value);
-            formData.append('severe_th', document.getElementById('severeTh').value);
+            const fd = new FormData();
+            fd.append('file', file);
+            fd.append('warn_th', document.getElementById('warnTh').value);
+            fd.append('severe_th', document.getElementById('severeTh').value);
 
             const btn = document.getElementById('analyzeBtn');
-            btn.disabled = true;
-            btn.classList.add('opacity-50');
-            document.getElementById('loadingIndicator').classList.remove('hidden');
+            btn.disabled = true; btn.innerText = "API rechnet...";
 
             try {
-                // NEU: relativer Pfad! So fragt die Webseite automatisch den Server, von dem sie geladen wurde (den Raspberry Pi).
-                const response = await fetch(`/api/v1/analyze`, {
-                    method: 'POST',
-                    body: formData
-                });
+                const res = await fetch(`/api/v1/analyze`, { method: 'POST', body: fd });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail);
 
-                const data = await response.json();
-                
-                if (!response.ok) throw new Error(data.detail || "API Fehler");
-
-                // Bild & Speed
                 document.getElementById('resultImage').src = data.processed_image_base64;
                 document.getElementById('resultImageContainer').classList.remove('hidden');
-                document.getElementById('processingTimeDisplay').innerText = `Pi Speed: ${data.processing_time_ms} ms`;
-
-                // Globale Metriken
+                document.getElementById('speedDisplay').innerText = `Speed: ${data.processing_time_ms} ms`;
                 document.getElementById('faiValue').textContent = data.global_metrics.foot_asymmetry_index_percentage;
 
-                // Tabelle füllen
                 const tbody = document.getElementById('resultsBody');
                 tbody.innerHTML = ''; 
-                
-                data.regional_metrics.forEach((item) => {
-                    let statusBadge = `<span class="px-2 py-1 rounded text-xs font-bold bg-green-500/20 text-green-400 border border-green-500/30">OK</span>`;
-                    if (item.status === "PATHOLOGISCH_SCHWER") statusBadge = `<span class="px-2 py-1 rounded text-xs font-bold bg-red-500/20 text-red-500 border border-red-500/30 animate-pulse">SCHWER</span>`;
-                    if (item.status === "PATHOLOGISCH_VERDACHT") statusBadge = `<span class="px-2 py-1 rounded text-xs font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30">VERDACHT</span>`;
-
-                    const metricsL = item.left_hemisphere.metrics;
-                    const metricsR = item.right_hemisphere.metrics;
-
-                    const row = `
-                        <tr class="hover:bg-slate-800 transition">
-                            <td class="p-3 font-medium text-white">${toeNames[item.anatomical_index]}</td>
-                            <td class="p-3">${statusBadge}</td>
-                            <td class="p-3 font-mono font-bold text-sky-300">${item.bilateral_comparisons.tdi_percentage.toFixed(2)}</td>
-                            <td class="p-3 font-mono text-slate-300">${metricsL.thermo_statistics.max_temp} / ${metricsR.thermo_statistics.max_temp}</td>
-                            <td class="p-3 font-mono text-slate-400">${metricsL.morphology.area_px} / ${metricsR.morphology.area_px}</td>
-                            <td class="p-3 font-mono text-slate-400">${metricsL.dynamics.thermal_gradient} / ${metricsR.dynamics.thermal_gradient}</td>
-                            <td class="p-3 font-mono text-slate-400">${metricsL.morphology.circularity} / ${metricsR.morphology.circularity}</td>
-                            <td class="p-3 font-mono text-slate-400">${metricsL.morphology.centroid_shift_px} / ${metricsR.morphology.centroid_shift_px}</td>
+                data.regional_metrics.forEach(item => {
+                    let badge = `<span class="px-2 py-1 rounded bg-green-500/20 text-green-400">OK</span>`;
+                    if (item.status === "PATHOLOGISCH_SCHWER") badge = `<span class="px-2 py-1 rounded bg-red-500/20 text-red-500 animate-pulse">SCHWER</span>`;
+                    if (item.status === "PATHOLOGISCH_VERDACHT") badge = `<span class="px-2 py-1 rounded bg-orange-500/20 text-orange-400">VERDACHT</span>`;
+                    
+                    const m_l = item.left_hemisphere.metrics;
+                    const m_r = item.right_hemisphere.metrics;
+                    
+                    tbody.innerHTML += `
+                        <tr class="hover:bg-slate-800">
+                            <td class="p-3 text-white">${toeNames[item.anatomical_index]}</td>
+                            <td class="p-3">${badge}</td>
+                            <td class="p-3 font-bold text-sky-300">${item.bilateral_comparisons.tdi_percentage.toFixed(2)}</td>
+                            <td class="p-3 text-slate-400">${m_l.thermo_statistics.max_temp} / ${m_r.thermo_statistics.max_temp}</td>
+                            <td class="p-3 text-slate-400">${m_l.morphology.area_px} / ${m_r.morphology.area_px}</td>
+                            <td class="p-3 text-slate-400">${m_l.dynamics.thermal_gradient} / ${m_r.dynamics.thermal_gradient}</td>
                         </tr>
                     `;
-                    tbody.innerHTML += row;
                 });
-                
                 document.getElementById('dataContainer').classList.remove('hidden');
-
             } catch (error) {
-                alert("Fehler: " + error.message + "\n\nLäuft die API auf dem Pi?");
+                alert("Fehler: " + error.message);
             } finally {
-                btn.disabled = false;
-                btn.classList.remove('opacity-50');
-                document.getElementById('loadingIndicator').classList.add('hidden');
+                btn.disabled = false; btn.innerText = "Bild analysieren";
             }
         });
     </script>

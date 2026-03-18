@@ -1,156 +1,114 @@
-import pandas as pd
 import cv2
 import numpy as np
+import pandas as pd
 import os
-import random
-import time
 
-def rotate_image_and_landmarks(img, landmarks_x, landmarks_y, angle):
-    """Dreht das Bild und berechnet die neuen Landmark-Koordinaten."""
-    (h, w) = img.shape[:2]
-    (cx, cy) = (w // 2, h // 2)
+# ROBUSTE PFADE
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+IMAGE_DIR = os.path.join(BASE_DIR, "dataset", "images")
+AUGMENTED_DIR = os.path.join(BASE_DIR, "dataset", "augmented_images")
+LABEL_FILE = os.path.join(BASE_DIR, "dataset", "labels.csv")
+AUGMENTED_LABEL_FILE = os.path.join(BASE_DIR, "dataset", "labels_augmented.csv")
 
-    # OpenCV Rotationsmatrix holen
-    # Winkel positiv: Gegen den Uhrzeigersinn, Negativ: Im Uhrzeigersinn
+def rotate_image_and_points(image, points_x, points_y, angle):
+    h, w = image.shape[:2]
+    cx, cy = w / 2, h / 2
+    
     M = cv2.getRotationMatrix2D((cx, cy), angle, 1.0)
+    rotated_img = cv2.warpAffine(image, M, (w, h), borderMode=cv2.BORDER_REPLICATE)
     
-    # 1. Bild drehen (Kante wird schwarz gefuellt)
-    rotated_img = cv2.warpAffine(img, M, (w, h), borderValue=(0,0,0))
-
-    # 2. Landmark-Koordinaten drehen
-    new_landmarks_x = []
-    new_landmarks_y = []
-    
-    # Formatierung fuer Matrix-Multiplikation
-    coords = np.column_stack((landmarks_x, landmarks_y, np.ones(len(landmarks_x))))
-    
-    # Transformation anwenden: M * v
-    new_coords = M.dot(coords.T).T
-    
-    # Bounding-Box Check: Koordinaten im Bild halten
-    for i in range(len(new_coords)):
-        nx = max(0, min(w - 1, int(new_coords[i][0])))
-        ny = max(0, min(h - 1, int(new_coords[i][1])))
-        new_landmarks_x.append(nx)
-        new_landmarks_y.append(ny)
+    new_x, new_y = [], []
+    for x, y in zip(points_x, points_y):
+        px = M[0, 0] * x + M[0, 1] * y + M[0, 2]
+        py = M[1, 0] * x + M[1, 1] * y + M[1, 2]
+        new_x.append(int(px))
+        new_y.append(int(py))
         
-    return rotated_img, new_landmarks_x, new_landmarks_y
+    return rotated_img, new_x, new_y
 
-def adjust_brightness_contrast(img, alpha=1.0, beta=0):
-    """Simuliert unterschiedliche Thermal-Signaturen durch Helligkeit/Kontrast."""
-    # alpha 1.0-3.0 (Kontrast), beta 0-100 (Helligkeit)
-    adjusted = cv2.convertScaleAbs(img, alpha=alpha, beta=beta)
-    return adjusted
+def safe_imwrite(filename, img):
+    """Speichert Bilder auch dann, wenn der Pfad Umlaute enthält."""
+    is_success, im_buf_arr = cv2.imencode(".jpeg", img)
+    if is_success:
+        im_buf_arr.tofile(filename)
 
-if __name__ == "__main__":
-    print("=== IGNITE DATA AUGMENTATION PROCESS STARTED ===")
-    dataset_dir = "dataset"
-    img_dir = os.path.join(dataset_dir, "images")
-    label_file = os.path.join(dataset_dir, "labels.csv")
-    
-    # Neuer Ordner fuer augmentierte Daten
-    aug_img_dir = os.path.join(dataset_dir, "augmented_images")
-    if not os.path.exists(aug_img_dir):
-        os.makedirs(aug_img_dir)
-    
-    # Originaldaten laden
-    if not os.path.exists(label_file):
-        print("Fehler: Keine labels.csv gefunden!")
-        exit()
+def main():
+    if not os.path.exists(AUGMENTED_DIR):
+        os.makedirs(AUGMENTED_DIR)
         
-    df_original = pd.read_csv(label_file)
-    print(f"{len(df_original)} Original-Bilder gefunden.")
+    if not os.path.exists(LABEL_FILE):
+        print(f"Fehler: Keine labels.csv gefunden unter: {LABEL_FILE}")
+        print("Bitte zuerst annotate_dataset.py ausführen und mindestens ein Bild labeln!")
+        return
 
-    # Neue Liste fuer augmentierte Labels
-    aug_data = []
+    # Prüfen, ob wirklich gelabelt wurde
+    df = pd.read_csv(LABEL_FILE)
+    if df.empty:
+        print("Die labels.csv ist leer. Du hast noch keine Bilder gelabelt!")
+        return
 
-    # Wir augmentieren jedes Originalbild mehrfach
-    for index, row in df_original.iterrows():
-        img_path = os.path.join(img_dir, row['filename'])
+    augmented_data = []
+    print(f"Starte Augmentation von {len(df)} Original-Bildern...")
+    
+    for index, row in df.iterrows():
+        img_name = row['filename']
+        img_path = os.path.join(IMAGE_DIR, img_name)
         
-        # Originalbild laden (BGR fuer Farb-Anzeige, falls vorhanden, spaeter loader.py nutzen)
-        img = cv2.imread(img_path)
+        # --- ROBUSTER BILD-IMPORT FÜR UMLAUTE ---
+        try:
+            with open(img_path, "rb") as f:
+                img_bytes = bytearray(f.read())
+            nparr = np.asarray(img_bytes, dtype=np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        except Exception as e:
+            print(f"Überspringe {img_name} (nicht lesbar: {e})")
+            continue
+            
         if img is None: continue
         
-        # Original-Koordinaten extrahieren
-        l_x, l_y = [], []
-        r_x, r_y = [], []
+        pts_x = [row[f'x{i}'] for i in range(10)]
+        pts_y = [row[f'y{i}'] for i in range(10)]
         
-        for i in range(1, 6):
-            l_x.append(row[f'L_Zeh{i}_x'])
-            l_y.append(row[f'L_Zeh{i}_y'])
-            r_x.append(row[f'R_Zeh{i}_x'])
-            r_y.append(row[f'R_Zeh{i}_y'])
-            
-        # Sammelliste fuer beide Fuesse
-        all_x = l_x + r_x
-        all_y = l_y + r_y
+        # Original speichern
+        safe_imwrite(os.path.join(AUGMENTED_DIR, img_name), img)
+        augmented_data.append(row.to_dict())
         
-        base_name = os.path.splitext(row['filename'])[0]
-
-        print(f"Augmentiere: {row['filename']}...")
-
-        # --- AUGMENTATIONS-STRATEGIE ---
-        timestamp = int(time.time() * 100)
+        # Rotation -15
+        rot1_img, rx1, ry1 = rotate_image_and_points(img, pts_x, pts_y, -15)
+        rot1_name = "aug_rotM15_" + img_name
+        safe_imwrite(os.path.join(AUGMENTED_DIR, rot1_name), rot1_img)
         
-        # 1. Original (unveraendert) auch im neuen Set behalten
-        # aug_data.append(row) # Wir erstellen eine komplett neue Tabelle
+        new_row = {'filename': rot1_name}
+        for i in range(10):
+            new_row[f'x{i}'] = rx1[i]
+            new_row[f'y{i}'] = ry1[i]
+        augmented_data.append(new_row)
+        
+        # Rotation +15
+        rot2_img, rx2, ry2 = rotate_image_and_points(img, pts_x, pts_y, 15)
+        rot2_name = "aug_rotP15_" + img_name
+        safe_imwrite(os.path.join(AUGMENTED_DIR, rot2_name), rot2_img)
+        
+        new_row2 = {'filename': rot2_name}
+        for i in range(10):
+            new_row2[f'x{i}'] = rx2[i]
+            new_row2[f'y{i}'] = ry2[i]
+        augmented_data.append(new_row2)
+        
+        # Helligkeit
+        bright_img = cv2.convertScaleAbs(img, alpha=1.2, beta=10)
+        bright_name = "aug_bright_" + img_name
+        safe_imwrite(os.path.join(AUGMENTED_DIR, bright_name), bright_img)
+        
+        new_row3 = {'filename': bright_name}
+        for i in range(10):
+            new_row3[f'x{i}'] = pts_x[i]
+            new_row3[f'y{i}'] = pts_y[i]
+        augmented_data.append(new_row3)
 
-        # 2. Leichte Rotationen (Simulation ungerader Fussstellung)
-        for angle in [-15, -10, -5, 5, 10, 15]:
-            # Drehen
-            rot_img, new_x, new_y = rotate_image_and_landmarks(img, all_x, all_y, angle)
-            
-            # Helligkeit leicht variieren
-            bright_factor = random.uniform(0.9, 1.1)
-            contrast_factor = random.uniform(0.95, 1.05)
-            final_img = adjust_brightness_contrast(rot_img, alpha=contrast_factor, beta=int(bright_factor*10))
-            
-            # Speichern
-            new_fname = f"aug_{base_name}_rot{angle}_{timestamp}.png"
-            new_fpath = os.path.join(aug_img_dir, new_fname)
-            cv2.imwrite(new_fpath, final_img)
-            
-            # Neue Zeile fuer CSV bauen
-            new_row = {"filename": new_fname}
-            for i in range(10): # 10 Zehen insgesamt
-                # Zuordnung L1-L5, R1-R5
-                side = "L" if i < 5 else "R"
-                toe_num = (i % 5) + 1
-                new_row[f"{side}_Zeh{toe_num}_x"] = new_x[i]
-                new_row[f"{side}_Zeh{toe_num}_y"] = new_y[i]
-            
-            aug_data.append(new_row)
+    aug_df = pd.DataFrame(augmented_data)
+    aug_df.to_csv(AUGMENTED_LABEL_FILE, index=False)
+    print(f"Erfolg! Aus {len(df)} Bildern wurden {len(aug_df)} Trainingsdaten generiert!")
 
-        # 3. Nur Helligkeits-Variationen (Simulierung Temperaturwechsel)
-        for b_factor in [0.85, 1.15]:
-            bright_img = adjust_brightness_contrast(img, alpha=1.0, beta=int(b_factor*15))
-            new_fname = f"aug_{base_name}_bright{b_factor}_{timestamp}.png"
-            new_fpath = os.path.join(aug_img_dir, new_fname)
-            cv2.imwrite(new_fpath, bright_img)
-            
-            # Koordinaten bleiben gleich!
-            new_row = {"filename": new_fname}
-            for i in range(10):
-                side = "L" if i < 5 else "R"
-                toe_num = (i % 5) + 1
-                new_row[f"{side}_Zeh{toe_num}_x"] = all_x[i]
-                new_row[f"{side}_Zeh{toe_num}_y"] = all_y[i]
-            aug_data.append(new_row)
-
-    # Finale Daten zusammenstellen
-    df_augmented = pd.DataFrame(aug_data)
-    
-    # Combined: Wir fuegen Original und Augmentiert zusammen (Profi-Ansatz)
-    # Da die Originale in einem anderen Ordner liegen, muessten wir die Pfade im CSV anpassen.
-    # Der Einfachheit halber: Wir arbeiten NUR mit dem augmentierten Set weiter (das Originale ist da indirekt ja drin).
-    
-    aug_label_file = os.path.join(dataset_dir, "labels_augmented.csv")
-    df_augmented.to_csv(aug_label_file, index=False)
-    
-    total_imgs = len(df_augmented)
-    print(f"=== ERFOLG! ===")
-    print(f"Das Dataset wurde von {len(df_original)} auf {total_imgs} Bilder vermehrt.")
-    print(f"Augmentierte Bilder: {aug_img_dir}/")
-    print(f"Neues CSV-Label-File: {aug_label_file}")
-    print("Mache jetzt weiter mit train_ai.py!")
+if __name__ == "__main__":
+    main()
