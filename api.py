@@ -52,7 +52,7 @@ async def serve_frontend():
     return {"message": "API läuft super! Aber die Datei static/index.html wurde nicht gefunden."}
 
 
-@app.post("/analyze")
+@app.post("/api/v1/analyze")
 async def analyze_image(file: UploadFile = File(...)):
     """
     Nimmt ein hochgeladenes Wärmebild entgegen und analysiert es auf Entzündungen.
