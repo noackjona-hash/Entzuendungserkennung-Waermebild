@@ -1,9 +1,11 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 import numpy as np
 import cv2
 import uvicorn
+import os
 
 # Hier importieren wir unsere Analyse-Funktionen
 from modules.analysis import perform_deep_analysis
@@ -25,7 +27,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Wichtig, damit ein Web-Frontend (z.B. deine index.html) mit der API kommunizieren darf
+# Wichtig, damit ein Web-Frontend mit der API kommunizieren darf
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -33,6 +35,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# NEU: Wir binden den Ordner "static" ein, damit CSS/JS Bilder geladen werden können
+if os.path.isdir("static"):
+    app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/")
+async def serve_frontend():
+    """
+    Diese Funktion wird aufgerufen, wenn du http://localhost:8000 im Browser öffnest.
+    Sie liefert deine index.html Datei aus dem static-Ordner zurück.
+    """
+    html_path = os.path.join("static", "index.html")
+    if os.path.exists(html_path):
+        return FileResponse(html_path)
+    return {"message": "API läuft super! Aber die Datei static/index.html wurde nicht gefunden."}
+
 
 @app.post("/analyze")
 async def analyze_image(file: UploadFile = File(...)):
