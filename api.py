@@ -6,7 +6,18 @@ import cv2
 import uvicorn
 
 # Hier importieren wir unsere Analyse-Funktionen
-from modules.analysis import perform_deep_analysis, render_diagnostics
+from modules.analysis import perform_deep_analysis
+
+# SICHERHEITSNETZ: Falls modules/analysis.py noch die alte Version ist
+try:
+    from modules.analysis import render_diagnostics
+except ImportError:
+    print("⚠️ WARNUNG: 'render_diagnostics' fehlt in modules/analysis.py!")
+    print("⚠️ Der Server startet trotzdem, aber überprüfe bitte, ob du die Datei gespeichert hast.")
+    
+    # Fallback-Funktion, die einfach das Originalbild zurückgibt, damit nichts abstürzt
+    def render_diagnostics(image, analysis_results):
+        return image.copy()
 
 app = FastAPI(
     title="Ignite - Entzündungserkennung",
