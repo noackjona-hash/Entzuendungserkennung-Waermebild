@@ -6,7 +6,7 @@ import numpy as np
 import cv2
 import uvicorn
 import os
-import traceback  # NEU: Damit wir sehen, was genau kaputt geht!
+import traceback
 
 # Hier importieren wir unsere Analyse-Funktionen
 from modules.analysis import perform_deep_analysis
@@ -37,7 +37,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# NEU: Wir binden den Ordner "static" ein, damit CSS/JS Bilder geladen werden können
+# Wir binden den Ordner "static" ein, damit CSS/JS Bilder geladen werden können
 if os.path.isdir("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -64,13 +64,26 @@ async def analyze_image(file: UploadFile = File(...)):
         nparr = np.frombuffer(contents, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-        if img is None:
-            raise ValueError("Das hochgeladene Bild konnte nicht gelesen werden.")
+        if img is None or img.size == 0:
+            raise ValueError("Das hochgeladene Bild konnte nicht decodiert werden. Ist es eine gültige Bilddatei?")
+
+        print(f"\n📸 [API] Bild erfolgreich vom Frontend empfangen! Dimensionen: {img.shape}")
 
         # 2. KI-Analyse durchführen
-        results = perform_deep_analysis(img)
+        try:
+            results = perform_deep_analysis(img)
+        except cv2.error as cv_err:
+            if "empty()" in str(cv_err):
+                print("\n" + "!"*60)
+                print("❌ FEHLER IN DEINEM ANALYSE-MODUL (modules/analysis.py)!")
+                print("OpenCV meldet, dass das Bild leer (None) ist, wenn es umgewandelt werden soll.")
+                print("Tipp: Überprüfe, ob du die Variable 'image' überschreibst oder versuchst,")
+                print("das Bild per cv2.imread() neu von der Festplatte zu laden. Die API")
+                print("übergibt das Bild bereits fertig an deine Funktion!")
+                print("!"*60 + "\n")
+            raise cv_err # Wirft den Fehler trotzdem, damit er im Traceback steht
 
-        # 3. (Optional) Diagnose-Bild erstellen, falls du es speichern/anzeigen willst
+        # 3. (Optional) Diagnose-Bild erstellen
         # diagnostic_image = render_diagnostics(img, results)
         # cv2.imwrite("diagnostic_output.jpg", diagnostic_image)
 
@@ -81,7 +94,6 @@ async def analyze_image(file: UploadFile = File(...)):
         })
 
     except Exception as e:
-        # DRUCKT DEN EXAKTEN FEHLER IN DEIN TERMINAL
         print("\n" + "="*50)
         print("🚨 FEHLER BEI DER BILDANALYSE:")
         traceback.print_exc()
