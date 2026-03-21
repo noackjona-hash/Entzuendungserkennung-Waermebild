@@ -6,6 +6,7 @@ import numpy as np
 import cv2
 import uvicorn
 import os
+import traceback  # NEU: Damit wir sehen, was genau kaputt geht!
 
 # Hier importieren wir unsere Analyse-Funktionen
 from modules.analysis import perform_deep_analysis
@@ -80,7 +81,13 @@ async def analyze_image(file: UploadFile = File(...)):
         })
 
     except Exception as e:
-        # Fängt Fehler ab, damit der Server nicht abstürzt, sondern eine saubere Fehlermeldung schickt
+        # DRUCKT DEN EXAKTEN FEHLER IN DEIN TERMINAL
+        print("\n" + "="*50)
+        print("🚨 FEHLER BEI DER BILDANALYSE:")
+        traceback.print_exc()
+        print("="*50 + "\n")
+        
+        # Fängt Fehler ab, damit der Server nicht komplett abstürzt
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
