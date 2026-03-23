@@ -464,11 +464,18 @@ class ThermalAnalyzer:
                 
         return gefiltert
 
-    def analysiere(self) -> List[Entzuendung]:
+    def analysiere(self, temperatur_schwellenwert: Optional[int] = None, max_distanz: Optional[int] = None, **kwargs) -> List[Entzuendung]:
         """
         Haupt-Pipeline: 
         Führt Thresholding, Segmentierung, Scoring und NMS aus.
+        Akzeptiert die alten Argumente aus Kompatibilitätsgründen zur GUI (main.py).
         """
+        # Abwärtskompatibilität zur main.py sicherstellen
+        if temperatur_schwellenwert is not None:
+            self.config.basis_schwellenwert_pixel = temperatur_schwellenwert
+        if max_distanz is not None:
+            self.config.suchradius_pixel = max_distanz
+            
         self.alle_kandidaten = []
         
         for seg in self.segmente:
