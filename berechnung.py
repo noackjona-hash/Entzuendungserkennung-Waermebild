@@ -39,59 +39,92 @@ class ThermalAnalyzer:
         self.gefundene_entzuendungen: list[Entzuendung] = []
 
     def analysiere(self, temperatur_schwellenwert: int = 210, max_distanz: int = 60) -> list[Entzuendung]:
+        """
+        Analysiert die Gelenke mit einem dynamischen Schwellenwert (Adaptive Thresholding)
+        für wesentlich genauere Entzündungs-Konturen.
+        """
         self.gefundene_entzuendungen = []
         
-        _, thresh = cv2.threshold(self.graustufen_bild, temperatur_schwellenwert, 255, cv2.THRESH_BINARY)
-        kernel = np.ones((5, 5), np.uint8)
-        thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
-        
-        konturen, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
-        for kontur in konturen:
-            if cv2.contourArea(kontur) < 40:
-                continue
-                
-            M = cv2.moments(kontur)
-            if M["m00"] == 0: continue
-            cX, cY = int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"])
+        for seg in self.segmente:
+            s, e = seg['start'], seg['end']
+            # Mittelpunkt des Fingers/Zehs berechnen
+            mX, mY = (s[0] + e[0]) // 2, (s[1] + e[1]) // 2
             
-            for seg in self.segmente:
-                s, e = seg['start'], seg['end']
-                mX, mY = (s[0] + e[0]) // 2, (s[1] + e[1]) // 2
+            # 1. Lokalen Bereich maskieren (Wir suchen nur in der Nähe des markierten Zehs)
+            lokale_maske = np.zeros(self.graustufen_bild.shape, dtype="uint8")
+            cv2.circle(lokale_maske, (mX, mY), max_distanz, 255, -1)
+            
+            lokaler_bereich = cv2.bitwise_and(self.graustufen_bild, self.graustufen_bild, mask=lokale_maske)
+            
+            # 2. Heißesten Punkt in diesem lokalen Bereich finden
+            _, max_val, _, _ = cv2.minMaxLoc(lokaler_bereich, mask=lokale_maske)
+            
+            # 3. Prüfen: Ist der heißeste Punkt heiß genug für eine Entzündung?
+            if max_val >= temperatur_schwellenwert:
                 
-                distanz = math.sqrt((cX - mX)**2 + (cY - mY)**2)
+                # 4. Dynamischer Schwellenwert für die Flächenberechnung!
+                # Wir erfassen alles, was bis zu 60 Intensitätsstufen kühler ist als das Zentrum,
+                # aber mindestens einen Wert von 150 hat (damit wir keinen kalten Hintergrund nehmen).
+                flaechen_schwellenwert = max(150, int(max_val) - 60)
                 
-                if distanz < max_distanz:
-                    maske = np.zeros(self.graustufen_bild.shape, dtype="uint8")
-                    cv2.drawContours(maske, [kontur], -1, 255, -1)
-                    staerke = cv2.mean(self.graustufen_bild, mask=maske)[0]
+                _, thresh = cv2.threshold(lokaler_bereich, flaechen_schwellenwert, 255, cv2.THRESH_BINARY)
+                
+                # Rauschen filtern und Formen schließen (Morphology)
+                kernel = np.ones((5, 5), np.uint8)
+                thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+                thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+                
+                konturen, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                
+                if konturen:
+                    # Nimm die größte zusammenhängende heiße Fläche an diesem Zeh
+                    groesste_kontur = max(konturen, key=cv2.contourArea)
                     
-                    self.gefundene_entzuendungen.append(Entzuendung(
-                        gelenk_name=seg['name'],
-                        groesse_px=cv2.contourArea(kontur),
-                        staerke=staerke,
-                        zentrum=(cX, cY),
-                        kontur=kontur
-                    ))
-                    break
-                    
+                    if cv2.contourArea(groesste_kontur) >= 40:
+                        M = cv2.moments(groesste_kontur)
+                        if M["m00"] != 0:
+                            cX = int(M["m10"] / M["m00"])
+                            cY = int(M["m01"] / M["m00"])
+                        else:
+                            cX, cY = mX, mY
+                            
+                        # Durchschnittliche Stärke der gesammelten Fläche berechnen
+                        entz_maske = np.zeros(self.graustufen_bild.shape, dtype="uint8")
+                        cv2.drawContours(entz_maske, [groesste_kontur], -1, 255, -1)
+                        staerke = cv2.mean(self.graustufen_bild, mask=entz_maske)[0]
+                        
+                        self.gefundene_entzuendungen.append(Entzuendung(
+                            gelenk_name=seg['name'],
+                            groesse_px=cv2.contourArea(groesste_kontur),
+                            staerke=staerke,
+                            zentrum=(cX, cY),
+                            kontur=groesste_kontur
+                        ))
+
         return self.gefundene_entzuendungen
 
     def render_output(self, output_pfad: str):
         ausgabe = self.original_bild.copy()
         
-        # Zeichne Finger/Zeh-Segmente
+        # Zeichne Finger/Zeh-Segmente (Linien etwas dünner für bessere Sichtbarkeit)
         for seg in self.segmente:
-            cv2.line(ausgabe, seg['start'], seg['end'], (255, 150, 0), 2)
-            cv2.circle(ausgabe, seg['start'], 4, (255, 255, 255), -1)
-            cv2.circle(ausgabe, seg['end'], 4, (255, 255, 255), -1)
+            cv2.line(ausgabe, seg['start'], seg['end'], (255, 150, 0), 1)
+            cv2.circle(ausgabe, seg['start'], 3, (255, 255, 255), -1)
+            cv2.circle(ausgabe, seg['end'], 3, (255, 255, 255), -1)
 
         # Zeichne Entzündungen
         for entz in self.gefundene_entzuendungen:
-            cv2.drawContours(ausgabe, [entz.kontur], -1, (0, 0, 255), 2)
+            # Rote Kontur dicker zeichnen (Dicke 3)
+            cv2.drawContours(ausgabe, [entz.kontur], -1, (0, 0, 255), 3)
             label = f"{entz.gelenk_name}: S:{int(entz.staerke)}"
+            
+            # Text mit einem schwarzen Hintergrund versehen, damit man ihn besser lesen kann
+            text_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+            cv2.rectangle(ausgabe, (entz.zentrum[0], entz.zentrum[1] - 25), 
+                          (entz.zentrum[0] + text_size[0], entz.zentrum[1] - 25 + text_size[1] + 5), 
+                          (0, 0, 0), -1)
             cv2.putText(ausgabe, label, (entz.zentrum[0], entz.zentrum[1]-10), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
                         
         # FIX für Pfade mit Umlauten beim SPEICHERN
         erfolg, buffer = cv2.imencode('.png', ausgabe)
