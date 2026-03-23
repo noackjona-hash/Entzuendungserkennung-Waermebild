@@ -14,6 +14,11 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        /* Custom Scrollbar für das Protokoll */
+        .protokoll-scroll::-webkit-scrollbar { width: 6px; }
+        .protokoll-scroll::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        .protokoll-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .protokoll-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     </style>
 </head>
 <body class="h-screen flex flex-col text-gray-800">
@@ -63,11 +68,17 @@
             </div>
 
             <!-- Ergebnisse -->
-            <div id="resultsArea" class="hidden mt-6">
+            <div id="resultsArea" class="hidden mt-6 flex-1 flex flex-col">
                 <h3 class="text-md font-bold text-red-600 border-b pb-2 mb-2">Befund:</h3>
                 <p id="resultSummary" class="text-sm font-semibold mb-3"></p>
-                <div id="resultDetails" class="space-y-3">
+                <div id="resultDetails" class="space-y-3 mb-6">
                     <!-- Detail-Karten kommen hier rein -->
+                </div>
+
+                <!-- NEU: Explainable AI Protokoll -->
+                <h3 class="text-md font-bold text-blue-800 border-b pb-2 mb-2">KI-Gedankengang (Protokoll):</h3>
+                <div id="protocolArea" class="flex-1 bg-slate-100 rounded p-3 text-xs font-mono text-slate-700 overflow-y-auto protokoll-scroll space-y-2 border border-slate-200 shadow-inner">
+                    <!-- Logs kommen hier rein -->
                 </div>
             </div>
         </aside>
@@ -81,8 +92,6 @@
     </main>
 
     <script>
-        // --- Globale Variablen ---
-        // WICHTIG: Hier ist jetzt deine Live-URL von Render eingetragen!
         const API_URL = "https://entzuendungserkennung-waermebild.onrender.com/analyze";
         
         const imageInput = document.getElementById('imageInput');
@@ -98,9 +107,8 @@
         let imageFile = null;
         let segments = [];
         let currentStart = null;
-        let scale = 1; // Skalierungsfaktor zwischen Originalbild und Canvas-Anzeige
+        let scale = 1;
 
-        // --- Bild Laden & Zeichnen ---
         imageInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -116,7 +124,7 @@
                     resetState();
                     drawCanvas();
                     instructionText.innerText = "Klicke auf den Canvas, um den START und ENDE eines Zehs zu markieren.";
-                    analyzeBtn.disabled = true; // Erst markieren, dann analysieren
+                    analyzeBtn.disabled = true;
                 };
                 img.src = event.target.result;
             };
@@ -139,20 +147,17 @@
         function drawCanvas() {
             if (!originalImage) return;
 
-            // Canvas an Container anpassen (Responsiv)
             const containerWidth = canvas.parentElement.clientWidth - 40;
             const containerHeight = canvas.parentElement.clientHeight - 40;
             
             const ratio = Math.min(containerWidth / originalImage.width, containerHeight / originalImage.height);
-            scale = ratio; // WICHTIG: Speichern für Klick-Umrechnung!
+            scale = ratio;
 
             canvas.width = originalImage.width * ratio;
             canvas.height = originalImage.height * ratio;
 
-            // Bild zeichnen
             ctx.drawImage(originalImage, 0, 0, canvas.width, canvas.height);
 
-            // Bestehende Segmente zeichnen
             segments.forEach(seg => {
                 const sx = seg.start[0] * scale;
                 const sy = seg.start[1] * scale;
@@ -166,18 +171,15 @@
                 ctx.lineWidth = 2;
                 ctx.stroke();
 
-                // Punkte
                 ctx.fillStyle = 'white';
                 ctx.beginPath(); ctx.arc(sx, sy, 3, 0, 2*Math.PI); ctx.fill();
                 ctx.beginPath(); ctx.arc(ex, ey, 3, 0, 2*Math.PI); ctx.fill();
 
-                // Label
                 ctx.fillStyle = '#00FFFF';
                 ctx.font = '12px Arial';
                 ctx.fillText(seg.name, ex + 10, ey);
             });
 
-            // Aktuellen Startpunkt zeichnen (falls erster Klick gemacht wurde)
             if (currentStart) {
                 const cx = currentStart[0] * scale;
                 const cy = currentStart[1] * scale;
@@ -189,25 +191,20 @@
             }
         }
 
-        // --- Canvas Interaktion ---
         canvas.addEventListener('mousedown', (e) => {
             if (!originalImage) return;
 
-            // Mausposition relativ zum Canvas
             const rect = canvas.getBoundingClientRect();
             const mouseX = e.clientX - rect.left;
             const mouseY = e.clientY - rect.top;
 
-            // Umrechnen auf Originalbild-Koordinaten
             const originalX = Math.round(mouseX / scale);
             const originalY = Math.round(mouseY / scale);
 
             if (!currentStart) {
-                // Erster Klick -> Startpunkt
                 currentStart = [originalX, originalY];
                 instructionText.innerText = "Klicke jetzt auf das ENDE.";
             } else {
-                // Zweiter Klick -> Endpunkt & Speichern
                 const segName = `Zeh ${segments.length + 1}`;
                 segments.push({
                     name: segName,
@@ -238,23 +235,19 @@
             }
         }
 
-        // --- API Anbindung ---
         analyzeBtn.addEventListener('click', async () => {
             if (!imageFile || segments.length === 0) return;
 
-            // UI Zustand: Laden
             analyzeBtn.disabled = true;
             analyzeBtn.innerText = "Lädt...";
             document.getElementById('loadingIndicator').classList.remove('hidden');
             document.getElementById('resultsArea').classList.add('hidden');
 
-            // Formulardaten für die FastAPI vorbereiten
             const formData = new FormData();
             formData.append('file', imageFile);
             formData.append('segmente_json', JSON.stringify(segments));
 
             try {
-                // WICHTIG: Anfrage an die Live-URL auf Render senden
                 const response = await fetch(API_URL, {
                     method: 'POST',
                     body: formData
@@ -270,7 +263,6 @@
             } catch (error) {
                 alert("Fehler bei der API Kommunikation. Läuft die API auf Render?\n" + error);
             } finally {
-                // UI Zustand: Wiederherstellen
                 analyzeBtn.disabled = false;
                 analyzeBtn.innerText = "Analyse Starten";
                 document.getElementById('loadingIndicator').classList.add('hidden');
@@ -278,23 +270,22 @@
         });
 
         function zeigeErgebnisse(data) {
-            // 1. Ergebnisbild im Canvas anzeigen
             const resultImage = new Image();
             resultImage.onload = () => {
-                originalImage = resultImage; // Überschreibe Originalbild mit gerendertem
-                resetState(); // Lösche blaue Linien aus dem Frontend-Speicher
+                originalImage = resultImage; 
+                resetState(); 
                 drawCanvas();
             };
-            // Base64 String direkt als Bildquelle nutzen!
             resultImage.src = "data:image/png;base64," + data.ergebnis_bild_base64;
 
-            // 2. Daten im HTML anzeigen
             const resultsArea = document.getElementById('resultsArea');
             const summary = document.getElementById('resultSummary');
             const details = document.getElementById('resultDetails');
+            const protocolArea = document.getElementById('protocolArea'); // NEU
             
             resultsArea.classList.remove('hidden');
             details.innerHTML = '';
+            protocolArea.innerHTML = ''; // NEU leeren
 
             if (data.gefundene_anomalien === 0) {
                 summary.innerText = "Keine signifikanten Entzündungen detektiert.";
@@ -310,13 +301,27 @@
                         <p class="font-bold text-red-700">${entz.gelenk}</p>
                         <p><strong>Konfidenz:</strong> ${entz.score_percent}%</p>
                         <p><strong>Max Temp:</strong> ${entz.temperatur_celsius.max} °C</p>
-                        <p><strong>Fläche:</strong> ${entz.geometrie.flaeche_px} px²</p>
                     `;
                     details.appendChild(card);
                 });
             }
+
+            // NEU: Protokoll in die Sidebar schreiben
+            if (data.protokoll && data.protokoll.length > 0) {
+                data.protokoll.forEach(log => {
+                    const p = document.createElement('p');
+                    // Füge etwas Farbe anhand der Emojis hinzu
+                    if (log.includes('🟥')) p.className = "text-red-700 font-bold";
+                    else if (log.includes('🟩')) p.className = "text-green-700";
+                    else if (log.includes('⚖️') || log.includes('🗑️')) p.className = "text-amber-600";
+                    else p.className = "text-slate-600";
+                    
+                    p.innerText = log;
+                    protocolArea.appendChild(p);
+                });
+            }
             
-            instructionText.innerText = "Analyse erfolgreich! Neues Bild laden zum Fortfahren.";
+            instructionText.innerText = "Analyse erfolgreich! Scrolle im Protokoll, um zu sehen, was die KI gedacht hat.";
         }
     </script>
 </body>
