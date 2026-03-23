@@ -16,18 +16,14 @@ class Entzuendung:
 
 class ThermalAnalyzer:
     """
-    Klasse zur Analyse von Wärmebildern. Unterstützt nun Segmente (Start- und Endpunkt).
+    Klasse zur Analyse von Wärmebildern. Unterstützt Segmente (Start- und Endpunkt).
     """
     
     def __init__(self, bild_pfad: str, segmente: list[dict]):
-        """
-        :param bild_pfad: Pfad zum Bild.
-        :param segmente: Liste von Dicts mit {'name': str, 'start': (x,y), 'end': (x,y)}
-        """
         self.bild_pfad = bild_pfad
         self.segmente = segmente
         
-        # FIX für Pfade mit Umlauten: Nutze numpy zum Lesen und cv2.imdecode
+        # FIX für Pfade mit Umlauten beim LADEN
         try:
             with open(bild_pfad, 'rb') as f:
                 bytes_data = f.read()
@@ -43,17 +39,12 @@ class ThermalAnalyzer:
         self.gefundene_entzuendungen: list[Entzuendung] = []
 
     def analysiere(self, temperatur_schwellenwert: int = 210, max_distanz: int = 60) -> list[Entzuendung]:
-        """
-        Sucht nach Hotspots in der Nähe der definierten Segmente (Finger/Zeh).
-        """
         self.gefundene_entzuendungen = []
         
-        # 1. Thresholding (Binärmaske der heißen Bereiche)
         _, thresh = cv2.threshold(self.graustufen_bild, temperatur_schwellenwert, 255, cv2.THRESH_BINARY)
         kernel = np.ones((5, 5), np.uint8)
         thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
         
-        # 2. Konturen finden
         konturen, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
         for kontur in konturen:
@@ -64,10 +55,8 @@ class ThermalAnalyzer:
             if M["m00"] == 0: continue
             cX, cY = int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"])
             
-            # 3. Prüfung: Gehört dieser Hotspot zu einem markierten Finger?
             for seg in self.segmente:
                 s, e = seg['start'], seg['end']
-                # Berechne Mittelpunkt des Fingers als Referenz
                 mX, mY = (s[0] + e[0]) // 2, (s[1] + e[1]) // 2
                 
                 distanz = math.sqrt((cX - mX)**2 + (cY - mY)**2)
@@ -84,14 +73,14 @@ class ThermalAnalyzer:
                         zentrum=(cX, cY),
                         kontur=kontur
                     ))
-                    break # Ein Hotspot wird nur einem Finger zugeordnet
+                    break
                     
         return self.gefundene_entzuendungen
 
     def render_output(self, output_pfad: str):
         ausgabe = self.original_bild.copy()
         
-        # Zeichne Finger-Segmente
+        # Zeichne Finger/Zeh-Segmente
         for seg in self.segmente:
             cv2.line(ausgabe, seg['start'], seg['end'], (255, 150, 0), 2)
             cv2.circle(ausgabe, seg['start'], 4, (255, 255, 255), -1)
@@ -104,4 +93,10 @@ class ThermalAnalyzer:
             cv2.putText(ausgabe, label, (entz.zentrum[0], entz.zentrum[1]-10), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
                         
-        cv2.imwrite(output_pfad, ausgabe)
+        # FIX für Pfade mit Umlauten beim SPEICHERN
+        erfolg, buffer = cv2.imencode('.png', ausgabe)
+        if erfolg:
+            with open(output_pfad, 'wb') as f:
+                f.write(buffer)
+        else:
+            raise IOError("Fehler: Das Ergebnisbild konnte nicht kodiert werden.")
