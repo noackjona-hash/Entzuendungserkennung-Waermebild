@@ -286,7 +286,7 @@ class ThermalAnalyzer:
     def _lade_bild_aus_bytes(self, bild_bytes: bytes) -> np.ndarray:
         """Sicheres Entpacken des Binärstroms zu einem OpenCV Matrix-Objekt."""
         if not self.security.verify_integrity():
-            raise SecurityError("Security Context abgelaufen. Abbruch zum Datenschutz.")
+            raise RuntimeError("Security Context abgelaufen. Abbruch zum Datenschutz.")
             
         try:
             array = np.frombuffer(bild_bytes, dtype=np.uint8)
@@ -300,13 +300,13 @@ class ThermalAnalyzer:
 
     def _preprocess_image(self, gray_image: np.ndarray) -> np.ndarray:
         """
-        Erweitertes medizinisches Preprocessing:
-        1. Non-Local Means Denoising (erhält thermische Kanten).
+        Erweitertes medizinisches Preprocessing (RAM-Optimiert):
+        1. Bilateral Filter (erhält Kanten, entfernt Rauschen, extrem RAM-schonend).
         2. Contrast Limited Adaptive Histogram Equalization (CLAHE).
         """
-        self.analyse_protokoll.append("🔬 Wende Denoising und CLAHE-Kontrastverstärkung an...")
-        # Hohe Rauschunterdrückung für günstige Wärmebildkameras (z.B. FLIR ONE)
-        denoised = cv2.fastNlMeansDenoising(gray_image, None, h=12, templateWindowSize=7, searchWindowSize=21)
+        self.analyse_protokoll.append("🔬 Wende kanten-erhaltendes Denoising (Bilateral) und CLAHE an...")
+        # Ersetzt das RAM-fressende fastNlMeansDenoising durch den effizienteren Bilateral-Filter
+        denoised = cv2.bilateralFilter(gray_image, d=9, sigmaColor=75, sigmaSpace=75)
         # Adaptives Histogramm zur Herausarbeitung feinster Temperaturunterschiede
         clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
         return clahe.apply(denoised)
