@@ -3,16 +3,13 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import json
-import os
-import shutil
 import base64
-import uuid
 from berechnung import ThermalAnalyzer
 
 app = FastAPI(
     title="Jugend Forscht 2026 - Thermografie API",
-    description="API zur automatischen Erkennung von Entzündungen auf Wärmebildern.",
-    version="2.1"
+    description="API zur automatischen Erkennung von Entzündungen auf Wärmebildern. (In-Memory Version)",
+    version="2.6"
 )
 
 app.add_middleware(
@@ -23,10 +20,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-TEMP_DIR = "api_temp_runs"
-os.makedirs(TEMP_DIR, exist_ok=True)
-
-@app.post("/analyze", summary="Analysiert ein Wärmebild auf Entzündungen")
+@app.post("/analyze", summary="Analysiert ein Wärmebild komplett im Arbeitsspeicher")
 async def analyze_thermal_image(
     file: UploadFile = File(...),
     segmente_json: str = Form(...)
@@ -36,23 +30,16 @@ async def analyze_thermal_image(
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Ungültiges JSON-Format.")
         
-    req_id = str(uuid.uuid4())
-    req_dir = os.path.join(TEMP_DIR, req_id)
-    os.makedirs(req_dir, exist_ok=True)
-    
-    file_path = os.path.join(req_dir, file.filename)
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-        
     try:
-        analyzer = ThermalAnalyzer(bild_pfad=file_path, segmente=segmente)
+        # 1. Bild rein in den Arbeitsspeicher laden - KEIN Festplattenzugriff!
+        bild_bytes = await file.read()
+        
+        # 2. Pipeline aus Bytes starten
+        analyzer = ThermalAnalyzer(bild_bytes=bild_bytes, segmente=segmente)
         ergebnisse = analyzer.analysiere() 
         
-        output_img_path = os.path.join(req_dir, f"result_{file.filename}")
-        analyzer.render_output(output_img_path)
-        
-        with open(output_img_path, "rb") as img_file:
-            img_base64 = base64.b64encode(img_file.read()).decode("utf-8")
+        # 3. Das gerenderte Bild direkt als Base64 Text aus dem RAM abholen
+        img_base64 = analyzer.render_base64()
             
         export_daten = []
         for e in ergebnisse:
@@ -63,10 +50,8 @@ async def analyze_thermal_image(
                 "temperatur_celsius": e.stats_celsius.to_dict()
             })
         
-        # NEU: Das detaillierte Analyse-Protokoll wird an das Frontend geschickt!
         return JSONResponse(content={
             "status": "success",
-            "request_id": req_id,
             "gefundene_anomalien": len(ergebnisse),
             "daten": export_daten,
             "protokoll": analyzer.analyse_protokoll, 

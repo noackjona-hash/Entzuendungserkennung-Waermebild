@@ -5,6 +5,7 @@ import logging
 import json
 import csv
 import os
+import base64
 from datetime import datetime
 from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Optional, Any
@@ -117,9 +118,7 @@ class Entzuendung:
     score: HeuristicScore = field(default_factory=HeuristicScore)
     profil: ThermalProfile = field(default_factory=ThermalProfile)
     
-    konturen_ebenen: Dict[str, np.ndarray] = field(default_factory=dict) # 'core', 'mid', 'outer'
-    bounding_box: Tuple[int, int, int, int] = (0, 0, 0, 0) # x, y, w, h
-    roi_bild: Optional[np.ndarray] = None # Ausgeschnittener Bildbereich
+    roi_bild: Optional[np.ndarray] = None 
 
 # ==============================================================================
 # HAUPTKLASSE DER ANALYSE
@@ -129,31 +128,33 @@ class ThermalAnalyzer:
     """
     Professionelle Pipeline zur Analyse medizinischer Wärmebilder.
     Beinhaltet: Preprocessing, Körper-Isolation, Asymmetrie-Prüfung,
-    Multilevel-Segmentation, Heuristik-Scoring, NMS und Datenexport.
+    Multilevel-Segmentation, Heuristik-Scoring, NMS. (Optimiert für In-Memory API)
     """
     
-    def __init__(self, bild_pfad: str, segmente: List[dict]):
+    def __init__(self, bild_pfad: Optional[str] = None, segmente: List[dict] = None, bild_bytes: Optional[bytes] = None):
         self.bild_pfad = bild_pfad
-        self.segmente = segmente
-        self.ausgabe_ordner = os.path.dirname(self.bild_pfad)
-        self.basis_dateiname = os.path.splitext(os.path.basename(self.bild_pfad))[0]
+        self.segmente = segmente if segmente else []
+        self.ausgabe_ordner = os.path.dirname(self.bild_pfad) if self.bild_pfad else "in_memory"
+        self.basis_dateiname = os.path.splitext(os.path.basename(self.bild_pfad))[0] if self.bild_pfad else "api_upload"
         self.config = ThermalConfig()
         
-        # XAI-Protokoll (Explainable AI) für das Frontend
         self.analyse_protokoll: List[str] = []
         
-        # Logging initialisieren
         self._setup_logger()
         self.logger.info("="*60)
-        self.logger.info(f"START THERMAL ANALYSIS PIPELINE v2.5 (Ultimate Edition)")
-        self.logger.info(f"Bild: {bild_pfad}")
-        self.logger.info(f"Anzahl markierter Segmente: {len(segmente)}")
+        self.logger.info(f"START THERMAL ANALYSIS PIPELINE v2.6 (In-Memory / Cloud Optimized)")
         
-        # 1. Bild sicher laden
-        self.original_bild = self._lade_bild_sicher(self.bild_pfad)
+        # 1. Bild sicher laden (von Pfad ODER direkt aus dem RAM)
+        if bild_bytes:
+            self.original_bild = self._lade_bild_aus_bytes(bild_bytes)
+            self.logger.info("Bild erfolgreich direkt aus dem Arbeitsspeicher geladen.")
+        elif self.bild_pfad:
+            self.original_bild = self._lade_bild_sicher(self.bild_pfad)
+        else:
+            raise ValueError("Es muss entweder bild_pfad oder bild_bytes übergeben werden.")
+            
         self.bild_hoehe, self.bild_breite = self.original_bild.shape[:2]
         
-        # 2. Preprocessing & Isolation
         self.graustufen_bild = cv2.cvtColor(self.original_bild, cv2.COLOR_BGR2GRAY)
         self.vorverarbeitetes_bild = self._preprocess_image(self.graustufen_bild)
         
@@ -172,11 +173,21 @@ class ThermalAnalyzer:
         self.logger.setLevel(logging.DEBUG)
         if not self.logger.handlers:
             log_format = logging.Formatter('%(asctime)s | %(levelname)-8s | %(message)s')
-            log_datei = os.path.join(self.ausgabe_ordner, f"{self.basis_dateiname}_analyse.log")
-            fh = logging.FileHandler(log_datei, encoding='utf-8')
-            fh.setLevel(logging.DEBUG)
-            fh.setFormatter(log_format)
-            self.logger.addHandler(fh)
+            # Cloud-Optimierung: Nur noch Console-Log, keine lokalen .log Dateien mehr!
+            ch = logging.StreamHandler()
+            ch.setLevel(logging.INFO)
+            ch.setFormatter(log_format)
+            self.logger.addHandler(ch)
+
+    def _lade_bild_aus_bytes(self, bild_bytes: bytes) -> np.ndarray:
+        try:
+            array = np.frombuffer(bild_bytes, dtype=np.uint8)
+            bild = cv2.imdecode(array, cv2.IMREAD_COLOR)
+            if bild is None: raise ValueError("Decode-Fehler.")
+            return bild
+        except Exception as e:
+            self.logger.critical(f"Konnte Bild nicht aus RAM laden: {e}")
+            raise ValueError("Bild-Bytes korrupt oder ungültiges Format.")
 
     def _lade_bild_sicher(self, pfad: str) -> np.ndarray:
         try:
@@ -421,95 +432,69 @@ class ThermalAnalyzer:
         self.gefundene_entzuendungen = self._non_maximum_suppression(self.alle_kandidaten)
         self.analyse_protokoll.append(f"🏁 Analyse beendet. {len(self.gefundene_entzuendungen)} finale Entzündung(en) verifiziert.")
         
-        # WICHTIG: Die Export-Funktionen wieder aufrufen!
-        self._exportiere_daten()
-        self._speichere_rois()
+        # In-Memory Optimierung: Wir speichern keine Dateien mehr ab! (Kein JSON, CSV, ROI)
         
         return self.gefundene_entzuendungen
 
     # ==========================================================================
-    # DATEN EXPORT (JSON, CSV, BERICHT) - WIEDERHERGESTELLT!
-    # ==========================================================================
-    
-    def _exportiere_daten(self):
-        json_pfad = os.path.join(self.ausgabe_ordner, f"{self.basis_dateiname}_daten.json")
-        csv_pfad = os.path.join(self.ausgabe_ordner, f"{self.basis_dateiname}_daten.csv")
-        txt_pfad = os.path.join(self.ausgabe_ordner, f"{self.basis_dateiname}_details.txt")
-        
-        export_daten = []
-        for e in self.gefundene_entzuendungen:
-            data = {
-                "gelenk": e.gelenk_name, "score_percent": round(e.score.total_confidence, 2),
-                "geometrie": e.morphology.to_dict(), "zentrum": {"x": e.zentrum[0], "y": e.zentrum[1]},
-                "temperatur_celsius": e.stats_celsius.to_dict()
-            }
-            export_daten.append(data)
-            
-        try:
-            with open(json_pfad, 'w', encoding='utf-8') as f:
-                json.dump(export_daten, f, indent=4, ensure_ascii=False)
-        except Exception as e:
-            self.logger.error(f"JSON Export Fehler: {e}")
-
-        try:
-            if export_daten:
-                with open(csv_pfad, 'w', newline='', encoding='utf-8') as f:
-                    writer = csv.writer(f, delimiter=';')
-                    writer.writerow(['Gelenk', 'Confidence_%', 'Flaeche_px', 'Temp_Max_C', 'Temp_Mean_C'])
-                    for e in export_daten:
-                        writer.writerow([e['gelenk'], e['score_percent'], e['geometrie']['flaeche_px'], e['temperatur_celsius']['max'], e['temperatur_celsius']['mean']])
-        except Exception as e:
-            self.logger.error(f"CSV Export Fehler: {e}")
-            
-        self._erstelle_text_bericht(txt_pfad)
-
-    def _erstelle_text_bericht(self, pfad: str):
-        lines = [
-            "==================================================",
-            "   THERMOGRAFIE ANALYSE - JUGEND FORSCHT 2026",
-            "==================================================",
-            f"Datum: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            f"Analysiertes Bild: {self.basis_dateiname}",
-            f"Körper-Basis-Temperatur (Raw): {self.global_mean_temp_raw:.1f}",
-            f"Linke Körperhälfte Ø: {self.mean_temp_links:.1f} | Rechte Körperhälfte Ø: {self.mean_temp_rechts:.1f}",
-            f"Asymmetrie-Faktor: {self.asymmetrie_faktor:.1f} (Heißere Seite: {self.heissere_seite})",
-            "--------------------------------------------------",
-            f"GEFUNDENE ANOMALIEN (Nach NMS): {len(self.gefundene_entzuendungen)}",
-            "--------------------------------------------------"
-        ]
-        for idx, e in enumerate(self.gefundene_entzuendungen, 1):
-            lines.append(f"[{idx}] {e.gelenk_name}")
-            lines.append(f"    - Konfidenz-Score : {e.score.total_confidence:.1f}%")
-            lines.append(f"    - Max Temperatur  : {e.stats_celsius.max_val:.1f} °C")
-            lines.append(f"    - Ø Temperatur    : {e.stats_celsius.mean_val:.1f} °C")
-            lines.append(f"    - Zirkularität    : {e.morphology.zirkularitaet:.2f} (1.0 = Kreis)")
-            lines.append(f"    - Entzündungsherd : {int(e.morphology.flaeche)} px² (Fläche)")
-            lines.append("")
-        lines.append("METHODIK:\n- Die Analyse nutzt Non-Maximum Suppression (NMS), um überlappende False-Positives zu filtern.\n- Ein KI-heuristisches Scoring-System vergleicht Kontrast, absolute Hitze, Asymmetrie und geometrische Form.")
-        
-        try:
-            with open(pfad, 'w', encoding='utf-8') as f:
-                f.write("\n".join(lines))
-        except Exception as e:
-            self.logger.error(f"Text-Report Fehler: {e}")
-
-    def _speichere_rois(self):
-        roi_ordner = os.path.join(self.ausgabe_ordner, f"{self.basis_dateiname}_ROIs")
-        if self.gefundene_entzuendungen and not os.path.exists(roi_ordner):
-            os.makedirs(roi_ordner)
-            
-        for e in self.gefundene_entzuendungen:
-            if e.roi_bild is not None:
-                sicherer_name = str(e.gelenk_name).replace(" ", "_").replace("/", "_")
-                roi_pfad = os.path.join(roi_ordner, f"ROI_{e.score.total_confidence:.0f}perc_{sicherer_name}.png")
-                erfolg, buffer = cv2.imencode('.png', e.roi_bild)
-                if erfolg:
-                    with open(roi_pfad, 'wb') as f:
-                        f.write(buffer)
-
-    # ==========================================================================
     # BILD AUSGABE (RENDERING)
     # ==========================================================================
+
+    def render_base64(self) -> str:
+        """
+        Rendert das Ergebnisbild direkt im Arbeitsspeicher und gibt es als Base64-String zurück.
+        Perfekt für Cloud-APIs, da absolut keine Festplatten-Zugriffe nötig sind.
+        """
+        ausgabe = self.original_bild.copy()
+        
+        for seg in self.segmente:
+            cv2.line(ausgabe, seg['start'], seg['end'], (255, 100, 0), 1, cv2.LINE_AA)
+            cv2.circle(ausgabe, seg['start'], 2, (150, 150, 150), -1)
+            cv2.circle(ausgabe, seg['end'], 2, (150, 150, 150), -1)
+
+        farben = {'outer': (0, 255, 255), 'mid': (0, 165, 255), 'core': (0, 0, 255)}
+        
+        for entz in self.gefundene_entzuendungen:
+            x, y, w, h = entz.bounding_box
+            cv2.rectangle(ausgabe, (x, y), (x+w, y+h), (255, 255, 255), 1, cv2.LINE_AA)
+            
+            for ebene, kontur in entz.konturen_ebenen.items():
+                farbe = farben.get(ebene, (255, 255, 255))
+                dicke = -1 if ebene == 'core' else 2
+                cv2.drawContours(ausgabe, [kontur], -1, farbe, dicke, cv2.LINE_AA)
+                
+            cv2.drawMarker(ausgabe, entz.zentrum, (0, 0, 0), cv2.MARKER_CROSS, 15, 2)
+            cv2.drawMarker(ausgabe, entz.zentrum, (255, 255, 255), cv2.MARKER_CROSS, 15, 1)
+
+            label_name = f"{entz.gelenk_name}"
+            label_temp = f"Temp: {entz.stats_celsius.max_val:.1f}C"
+            label_conf = f"Conf: {entz.score.total_confidence:.1f}%"
+            
+            t1, _ = cv2.getTextSize(label_name, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)
+            t2, _ = cv2.getTextSize(label_temp, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)
+            t3, _ = cv2.getTextSize(label_conf, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)
+            max_w = max(t1[0], t2[0], t3[0])
+            
+            bg_rect_start = (x, max(0, y - 50))
+            bg_rect_end = (x + max_w + 6, max(0, y - 2))
+            
+            cv2.rectangle(ausgabe, bg_rect_start, bg_rect_end, (0, 0, 0), -1)
+            
+            text_x = x + 3
+            text_y_base = y - 40
+            cv2.putText(ausgabe, label_name, (text_x, text_y_base), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
+            cv2.putText(ausgabe, label_temp, (text_x, text_y_base + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1, cv2.LINE_AA)
+            
+            conf_color = (0, 255, 0) if entz.score.total_confidence > 80 else (0, 255, 255)
+            cv2.putText(ausgabe, label_conf, (text_x, text_y_base + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.4, conf_color, 1, cv2.LINE_AA)
+                        
+        erfolg, buffer = cv2.imencode('.png', ausgabe)
+        if erfolg:
+            self.logger.info("Ergebnisbild erfolgreich im RAM encodiert.")
+            return base64.b64encode(buffer).decode("utf-8")
+        else:
+            self.logger.error("Fehler beim Encodieren des Ergebnisbildes.")
+            raise IOError("Fehler: Das Ergebnisbild konnte nicht kodiert werden.")
 
     def render_output(self, output_pfad: str):
         ausgabe = self.original_bild.copy()
