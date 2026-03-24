@@ -45,7 +45,7 @@ class ThermalConfig:
     
     basis_schwellenwert_pixel: int = 210  
     suchradius_pixel: int = 80            
-    min_kontur_flaeche: int = 35          
+    min_kontur_flaeche: int = 12          # <--- Geändert auf 12 (verhindert das Ausfiltern der heißen Zehenspitzen)
     
     score_gewicht_absolut: float = 0.35    
     score_gewicht_kontrast: float = 0.30   
@@ -55,7 +55,7 @@ class ThermalConfig:
     min_confidence_score: float = 85.0    
     nms_overlap_distanz: int = 45         
     
-    use_watershed_segmentation: bool = True
+    use_watershed_segmentation: bool = False # <--- Deaktiviert, da es glatte Wärmeverläufe zu stark zersplittert
     calculate_hu_moments: bool = True
 
 # ==============================================================================
@@ -305,8 +305,8 @@ class ThermalAnalyzer:
         2. Contrast Limited Adaptive Histogram Equalization (CLAHE).
         """
         self.analyse_protokoll.append("🔬 Wende kanten-erhaltendes Denoising (Bilateral) und CLAHE an...")
-        # Ersetzt das RAM-fressende fastNlMeansDenoising durch den effizienteren Bilateral-Filter
-        denoised = cv2.bilateralFilter(gray_image, d=9, sigmaColor=75, sigmaSpace=75)
+        # Weichere Parameter (d=5), damit der Hitze-Peak des Zehs nicht weichgezeichnet wird
+        denoised = cv2.bilateralFilter(gray_image, d=5, sigmaColor=50, sigmaSpace=50)
         # Adaptives Histogramm zur Herausarbeitung feinster Temperaturunterschiede
         clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
         return clahe.apply(denoised)
@@ -562,13 +562,13 @@ class ThermalAnalyzer:
             _, max_val, _, max_loc = cv2.minMaxLoc(lokaler_bereich, mask=lokale_maske)
             lokal_mean = cv2.mean(self.vorverarbeitetes_bild, mask=lokale_maske)[0]
             
-            # Dynamischer Cutoff basierend auf Patienten-Baseline
-            lokaler_schwelle = max(self.global_mean_temp_raw + 15, int(max_val) - 35)
+            # Dynamischer Cutoff: Toleranzbereich erhöht (-45 statt -35), um den Wärmehof sicher zu greifen
+            lokaler_schwelle = max(self.global_mean_temp_raw + 10, int(max_val) - 45)
             
             # 3. Multilevel Isothermen berechnen (3 Ebenen der Hitzeausbreitung)
             schwellen = {
                 'core': max(lokaler_schwelle + 25, int(max_val) - 10), # Nukleus
-                'mid': max(lokaler_schwelle + 12, int(max_val) - 20),  # Corona
+                'mid': max(lokaler_schwelle + 15, int(max_val) - 25),  # Corona
                 'outer': lokaler_schwelle                              # Peripherie
             }
             
@@ -598,9 +598,12 @@ class ThermalAnalyzer:
                         if ebene == 'outer': 
                             haupt_kontur = groesste
                             
-            # Fallback, falls Peripherie nicht konvergiert
-            if haupt_kontur is None and 'core' in konturen_dict:
-                haupt_kontur = konturen_dict['core']
+            # Robusteres Fallback-System, falls 'outer' durch Rauschen fragmentiert wurde
+            if haupt_kontur is None:
+                for ebene in ['outer', 'mid', 'core']:
+                    if ebene in konturen_dict:
+                        haupt_kontur = konturen_dict[ebene]
+                        break
                 
             # 4. Daten-Aggregation & Scoring
             if haupt_kontur is not None:
