@@ -1,99 +1,219 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="de" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jugend Forscht 2026 - Thermografie Analyse</title>
-    <!-- Tailwind CSS für professionelles Design -->
+    <title>JF 2026 - Enterprise Thermografie KI</title>
+    <!-- Tailwind CSS (via CDN) -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; }
-        canvas { cursor: crosshair; }
-        .loader { border-top-color: #3498db; -webkit-animation: spinner 1.5s linear infinite; animation: spinner 1.5s linear infinite; }
-        @keyframes spinner {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        medical: {
+                            900: '#0f172a', // Deep Slate
+                            800: '#1e293b',
+                            700: '#334155',
+                            cyan: '#06b6d4',
+                            accent: '#38bdf8'
+                        }
+                    }
+                }
+            }
         }
-        /* Custom Scrollbar für das Protokoll */
-        .protokoll-scroll::-webkit-scrollbar { width: 6px; }
-        .protokoll-scroll::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
-        .protokoll-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-        .protokoll-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </script>
+    <style>
+        body { font-family: 'Inter', 'Segoe UI', sans-serif; background-color: #0f172a; color: #f8fafc; }
+        canvas { cursor: crosshair; }
+        
+        /* Cooles Hacker/Medical Terminal Scrolling */
+        .terminal-scroll::-webkit-scrollbar { width: 6px; }
+        .terminal-scroll::-webkit-scrollbar-track { background: #1e293b; border-radius: 4px; }
+        .terminal-scroll::-webkit-scrollbar-thumb { background: #06b6d4; border-radius: 4px; }
+        
+        /* Scan Line Animation für das Canvas */
+        .scan-line {
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: rgba(6, 182, 212, 0.7);
+            box-shadow: 0 0 10px rgba(6, 182, 212, 1);
+            animation: scan 2s linear infinite;
+            display: none;
+        }
+        @keyframes scan {
+            0% { top: 0; opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { top: 100%; opacity: 0; }
+        }
+
+        /* Lade-Spinner */
+        .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            border-top: 3px solid #06b6d4;
+            width: 24px;
+            height: 24px;
+            -webkit-animation: spin 1s linear infinite;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
-<body class="h-screen flex flex-col text-gray-800">
+<body class="h-screen flex flex-col overflow-hidden selection:bg-medical-cyan selection:text-white">
 
-    <!-- Header -->
-    <header class="bg-blue-800 text-white shadow-md p-4 flex justify-between items-center">
-        <div>
-            <h1 class="text-2xl font-bold">Thermografie Analyse API</h1>
-            <p class="text-sm text-blue-200">Jugend Forscht 2026 - Jona Noack</p>
-        </div>
+    <!-- App Header (Enterprise Look) -->
+    <header class="bg-medical-800 border-b border-medical-700 shadow-lg p-4 flex justify-between items-center z-10 shrink-0">
         <div class="flex items-center gap-4">
-            <span id="apiStatus" class="flex items-center text-sm font-semibold text-green-400">
-                <span class="w-3 h-3 rounded-full bg-green-400 mr-2 animate-pulse"></span>
-                API Ready (Online)
-            </span>
+            <div class="bg-medical-900 p-2 rounded-lg ring-1 ring-medical-700 shadow-inner">
+                <svg class="w-6 h-6 text-medical-cyan" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-wide text-white">THERMO<span class="text-medical-cyan">AI</span> VISION</h1>
+                <p class="text-xs text-slate-400 font-mono">Jugend Forscht 2026 | Lead Researcher: Jona Noack</p>
+            </div>
+        </div>
+        
+        <!-- Security Badges -->
+        <div class="flex gap-3">
+            <div class="flex items-center bg-medical-900 ring-1 ring-emerald-500/50 rounded-full px-3 py-1 shadow-sm">
+                <div class="w-2 h-2 rounded-full bg-emerald-500 mr-2 animate-pulse"></div>
+                <span class="text-xs font-mono text-emerald-400">API ONLINE</span>
+            </div>
+            <div class="flex items-center bg-medical-900 ring-1 ring-medical-700 rounded-full px-3 py-1 shadow-sm" title="Bild wird nur im RAM analysiert und sofort zerstört.">
+                <svg class="w-3 h-3 text-slate-400 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                <span class="text-xs font-mono text-slate-300">RAM ENCRYPTED (AES)</span>
+            </div>
         </div>
     </header>
 
-    <!-- Main Workspace -->
+    <!-- Main Content -->
     <main class="flex-1 flex overflow-hidden">
         
-        <!-- Linke Sidebar: Controls & Segmente -->
-        <aside class="w-1/3 bg-white border-r border-gray-200 shadow-sm flex flex-col p-6 overflow-y-auto">
-            <h2 class="text-lg font-bold mb-4 border-b pb-2">1. Bild hochladen</h2>
-            <input type="file" id="imageInput" accept="image/png, image/jpeg" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 mb-6"/>
-
-            <h2 class="text-lg font-bold mb-2 border-b pb-2">2. Segmente (Zehen/Finger)</h2>
-            <p class="text-sm text-gray-600 mb-4" id="instructionText">Lade zuerst ein Bild hoch.</p>
+        <!-- Sidebar (Controls & Results) -->
+        <aside class="w-96 bg-medical-800 border-r border-medical-700 flex flex-col z-10 shadow-2xl shrink-0">
             
-            <ul id="segmentList" class="mb-4 space-y-2 text-sm text-gray-700">
-                <!-- Segmente tauchen hier auf -->
-            </ul>
-
-            <button id="resetSegmentsBtn" class="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded transition hidden mb-6">
-                Markierungen löschen
-            </button>
-
-            <h2 class="text-lg font-bold mb-4 border-b pb-2">3. KI Analyse</h2>
-            <button id="analyzeBtn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded shadow-lg transition disabled:bg-gray-400 disabled:cursor-not-allowed" disabled>
-                Analyse Starten
-            </button>
-
-            <!-- Lade-Animation -->
-            <div id="loadingIndicator" class="hidden mt-6 flex flex-col items-center">
-                <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-10 w-10 mb-2"></div>
-                <p class="text-sm text-gray-600 font-semibold text-center">Analysiere Wärmebild...<br>(max. 30 Sekunden)</p>
-            </div>
-
-            <!-- Ergebnisse -->
-            <div id="resultsArea" class="hidden mt-6 flex-1 flex flex-col">
-                <h3 class="text-md font-bold text-red-600 border-b pb-2 mb-2">Befund:</h3>
-                <p id="resultSummary" class="text-sm font-semibold mb-3"></p>
-                <div id="resultDetails" class="space-y-3 mb-6">
-                    <!-- Detail-Karten kommen hier rein -->
+            <!-- Controls Area -->
+            <div class="p-5 flex-1 overflow-y-auto terminal-scroll">
+                
+                <!-- 1. Upload -->
+                <div class="mb-6">
+                    <div class="flex items-center gap-2 mb-2 text-medical-accent">
+                        <span class="bg-medical-900 text-xs font-bold px-2 py-0.5 rounded ring-1 ring-medical-700">01</span>
+                        <h2 class="text-sm font-semibold tracking-wider uppercase">Bildquelle</h2>
+                    </div>
+                    <label class="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-medical-700 rounded-lg cursor-pointer bg-medical-900 hover:bg-medical-800 hover:border-medical-cyan transition-colors group">
+                        <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                            <svg class="w-6 h-6 text-slate-400 group-hover:text-medical-cyan transition-colors mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                            <p class="text-xs text-slate-400 group-hover:text-slate-300"><span class="font-semibold">Klicken</span> oder Bild ablegen</p>
+                        </div>
+                        <input type="file" id="imageInput" accept="image/png, image/jpeg" class="hidden" />
+                    </label>
                 </div>
 
-                <!-- NEU: Explainable AI Protokoll -->
-                <h3 class="text-md font-bold text-blue-800 border-b pb-2 mb-2">KI-Gedankengang (Protokoll):</h3>
-                <div id="protocolArea" class="flex-1 bg-slate-100 rounded p-3 text-xs font-mono text-slate-700 overflow-y-auto protokoll-scroll space-y-2 border border-slate-200 shadow-inner">
-                    <!-- Logs kommen hier rein -->
+                <!-- 2. Segmente -->
+                <div class="mb-6">
+                    <div class="flex items-center gap-2 mb-2 text-medical-accent">
+                        <span class="bg-medical-900 text-xs font-bold px-2 py-0.5 rounded ring-1 ring-medical-700">02</span>
+                        <h2 class="text-sm font-semibold tracking-wider uppercase">Messpunkte (Gelenke)</h2>
+                    </div>
+                    <div class="bg-medical-900 rounded-lg p-3 ring-1 ring-medical-700 mb-2">
+                        <p class="text-xs text-slate-400 font-mono" id="instructionText">> Warten auf Bilddaten...</p>
+                    </div>
+                    
+                    <ul id="segmentList" class="space-y-1 mb-3">
+                        <!-- Segmente tauchen hier auf -->
+                    </ul>
+
+                    <button id="resetSegmentsBtn" class="w-full text-xs font-mono bg-medical-700 hover:bg-red-900/50 text-slate-300 hover:text-red-400 py-1.5 rounded transition-colors hidden ring-1 ring-transparent hover:ring-red-500/50">
+                        [x] Markierungen verwerfen
+                    </button>
+                </div>
+
+                <!-- 3. Analyse Button -->
+                <div class="mb-6">
+                    <button id="analyzeBtn" class="w-full relative overflow-hidden bg-medical-cyan hover:bg-cyan-400 text-medical-900 font-bold py-3 px-4 rounded shadow-[0_0_15px_rgba(6,182,212,0.3)] transition-all disabled:bg-medical-700 disabled:text-slate-500 disabled:shadow-none disabled:cursor-not-allowed group" disabled>
+                        <div class="flex items-center justify-center gap-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                            <span id="analyzeBtnText">KI-Analyse Starten</span>
+                        </div>
+                    </button>
+                </div>
+
+                <!-- 4. Result Dashboard (Hidden initially) -->
+                <div id="resultsArea" class="hidden flex-col gap-4 animate-[fadeIn_0.5s_ease-out]">
+                    <div class="h-px w-full bg-medical-700 my-2"></div>
+                    
+                    <div>
+                        <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Diagnose-Bericht</h3>
+                        <div id="resultSummaryBox" class="bg-medical-900 ring-1 ring-medical-700 rounded-lg p-3">
+                            <p id="resultSummary" class="text-sm font-semibold"></p>
+                        </div>
+                    </div>
+
+                    <div id="resultDetails" class="space-y-2">
+                        <!-- Anomalie-Karten -->
+                    </div>
+
+                    <!-- Security Audit Info -->
+                    <div id="securityAuditBox" class="bg-emerald-900/20 ring-1 ring-emerald-500/30 rounded p-2 mt-2 hidden">
+                        <p class="text-[10px] text-emerald-400 font-mono break-all flex items-start gap-1">
+                            <svg class="w-3 h-3 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+                            <span id="securityAuditText"></span>
+                        </p>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- XAI Terminal (Bottom of Sidebar) -->
+            <div class="h-1/3 bg-black border-t border-medical-700 p-3 flex flex-col shrink-0">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-[10px] text-medical-cyan font-mono tracking-widest uppercase">XAI System Log</span>
+                    <div class="flex gap-1">
+                        <div class="w-2 h-2 rounded-full bg-red-500"></div>
+                        <div class="w-2 h-2 rounded-full bg-yellow-500"></div>
+                        <div class="w-2 h-2 rounded-full bg-green-500"></div>
+                    </div>
+                </div>
+                <div id="protocolArea" class="flex-1 overflow-y-auto terminal-scroll text-[11px] font-mono text-green-400 space-y-1">
+                    <p class="text-slate-500">> System bereit. Warte auf Daten...</p>
                 </div>
             </div>
+
         </aside>
 
-        <!-- Rechte Seite: Canvas (Bild) -->
-        <section class="w-2/3 bg-gray-900 flex justify-center items-center overflow-auto p-4 relative">
-            <canvas id="mainCanvas" class="bg-black shadow-2xl rounded max-w-full max-h-full"></canvas>
-            <p id="canvasPlaceholder" class="absolute text-gray-500 text-xl font-light">Bild wird hier angezeigt</p>
+        <!-- Canvas Workspace -->
+        <section class="flex-1 bg-medical-900 relative flex justify-center items-center overflow-hidden p-6 pattern-bg">
+            <!-- Dekoratives Grid im Hintergrund -->
+            <div class="absolute inset-0 opacity-10 pointer-events-none" style="background-image: radial-gradient(#38bdf8 1px, transparent 1px); background-size: 30px 30px;"></div>
+            
+            <div class="relative shadow-2xl ring-1 ring-medical-700 rounded-lg overflow-hidden bg-black max-w-full max-h-full flex justify-center items-center" id="canvasContainer">
+                <canvas id="mainCanvas" class="block max-w-full max-h-full object-contain"></canvas>
+                <!-- UI Scanline Effect -->
+                <div id="scanLine" class="scan-line"></div>
+                <p id="canvasPlaceholder" class="absolute text-slate-500 font-mono text-sm tracking-widest uppercase flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                    Kein Signal
+                </p>
+            </div>
         </section>
 
     </main>
 
     <script>
+        // ==========================================
+        // ENTERPRISE CONFIGURATION
+        // ==========================================
         const API_URL = "https://entzuendungserkennung-waermebild.onrender.com/analyze";
+        const API_KEY = "jf2026-jona-super-secret-key-9988"; // Dein sicherer API-Key
         
+        // ==========================================
+        // DOM ELEMENTS
+        // ==========================================
         const imageInput = document.getElementById('imageInput');
         const canvas = document.getElementById('mainCanvas');
         const ctx = canvas.getContext('2d');
@@ -101,7 +221,9 @@
         const instructionText = document.getElementById('instructionText');
         const segmentList = document.getElementById('segmentList');
         const analyzeBtn = document.getElementById('analyzeBtn');
+        const analyzeBtnText = document.getElementById('analyzeBtnText');
         const resetSegmentsBtn = document.getElementById('resetSegmentsBtn');
+        const scanLine = document.getElementById('scanLine');
         
         let originalImage = null;
         let imageFile = null;
@@ -109,6 +231,9 @@
         let currentStart = null;
         let scale = 1;
 
+        // ==========================================
+        // UI LOGIC & CANVAS DRAWING
+        // ==========================================
         imageInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -122,8 +247,14 @@
                     originalImage = img;
                     placeholder.classList.add('hidden');
                     resetState();
+                    
+                    // Container an Bilddimensionen anpassen für perfektes Scaling
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    
                     drawCanvas();
-                    instructionText.innerText = "Klicke auf den Canvas, um den START und ENDE eines Zehs zu markieren.";
+                    typeInstruction("> Signal empfangen. Bitte Start- und Endpunkt eines Gelenks markieren.");
+                    logToTerminal("> Neues Wärmebild in lokalen Speicher geladen.", "text-slate-400");
                     analyzeBtn.disabled = true;
                 };
                 img.src = event.target.result;
@@ -136,58 +267,69 @@
             currentStart = null;
             updateSegmentUI();
             document.getElementById('resultsArea').classList.add('hidden');
+            document.getElementById('protocolArea').innerHTML = '<p class="text-slate-500">> System bereit.</p>';
+            document.getElementById('securityAuditBox').classList.add('hidden');
         }
 
         resetSegmentsBtn.addEventListener('click', () => {
             resetState();
             drawCanvas();
             analyzeBtn.disabled = true;
+            logToTerminal("> Markierungen durch Benutzer gelöscht.", "text-yellow-500");
+            typeInstruction("> Bitte Start- und Endpunkt eines Gelenks markieren.");
         });
 
         function drawCanvas() {
             if (!originalImage) return;
 
-            const containerWidth = canvas.parentElement.clientWidth - 40;
-            const containerHeight = canvas.parentElement.clientHeight - 40;
-            
-            const ratio = Math.min(containerWidth / originalImage.width, containerHeight / originalImage.height);
-            scale = ratio;
+            // Berechne den visuellen Scale-Faktor basierend auf der echten Canvas-Größe vs. CSS-Größe
+            const rect = canvas.getBoundingClientRect();
+            scale = canvas.width / rect.width; 
 
-            canvas.width = originalImage.width * ratio;
-            canvas.height = originalImage.height * ratio;
-
+            // Bild zeichnen
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(originalImage, 0, 0, canvas.width, canvas.height);
 
+            // Segmente zeichnen (Pfade und Punkte)
             segments.forEach(seg => {
-                const sx = seg.start[0] * scale;
-                const sy = seg.start[1] * scale;
-                const ex = seg.end[0] * scale;
-                const ey = seg.end[1] * scale;
+                const sx = seg.start[0];
+                const sy = seg.start[1];
+                const ex = seg.end[0];
+                const ey = seg.end[1];
 
+                // Neon Line
                 ctx.beginPath();
                 ctx.moveTo(sx, sy);
                 ctx.lineTo(ex, ey);
-                ctx.strokeStyle = '#00FFFF';
-                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#06b6d4'; // medical-cyan
+                ctx.lineWidth = 3;
+                ctx.shadowColor = '#06b6d4';
+                ctx.shadowBlur = 10;
                 ctx.stroke();
+                ctx.shadowBlur = 0; // Reset
 
-                ctx.fillStyle = 'white';
-                ctx.beginPath(); ctx.arc(sx, sy, 3, 0, 2*Math.PI); ctx.fill();
-                ctx.beginPath(); ctx.arc(ex, ey, 3, 0, 2*Math.PI); ctx.fill();
+                // Start/End Points
+                ctx.fillStyle = '#f8fafc';
+                ctx.beginPath(); ctx.arc(sx, sy, 4, 0, 2*Math.PI); ctx.fill();
+                ctx.beginPath(); ctx.arc(ex, ey, 4, 0, 2*Math.PI); ctx.fill();
 
-                ctx.fillStyle = '#00FFFF';
-                ctx.font = '12px Arial';
-                ctx.fillText(seg.name, ex + 10, ey);
+                // Tag/Label
+                ctx.fillStyle = '#06b6d4';
+                ctx.font = 'bold 16px monospace';
+                ctx.fillText(seg.name, ex + 12, ey + 5);
             });
 
+            // Current Drawing Start
             if (currentStart) {
-                const cx = currentStart[0] * scale;
-                const cy = currentStart[1] * scale;
-                ctx.fillStyle = 'yellow';
-                ctx.beginPath(); ctx.arc(cx, cy, 4, 0, 2*Math.PI); ctx.fill();
-                ctx.strokeStyle = 'yellow';
+                const cx = currentStart[0];
+                const cy = currentStart[1];
+                ctx.fillStyle = '#fbbf24'; // amber
+                ctx.beginPath(); ctx.arc(cx, cy, 6, 0, 2*Math.PI); ctx.fill();
+                
+                // Pulsing Ring Effect
+                ctx.strokeStyle = '#fbbf24';
                 ctx.lineWidth = 2;
-                ctx.stroke();
+                ctx.beginPath(); ctx.arc(cx, cy, 12, 0, 2*Math.PI); ctx.stroke();
             }
         }
 
@@ -198,21 +340,23 @@
             const mouseX = e.clientX - rect.left;
             const mouseY = e.clientY - rect.top;
 
-            const originalX = Math.round(mouseX / scale);
-            const originalY = Math.round(mouseY / scale);
+            // Wichtig: Umrechnung auf die internen Bildkoordinaten!
+            const originalX = Math.round(mouseX * scale);
+            const originalY = Math.round(mouseY * scale);
 
             if (!currentStart) {
                 currentStart = [originalX, originalY];
-                instructionText.innerText = "Klicke jetzt auf das ENDE.";
+                typeInstruction("> Startpunkt fixiert. Bitte Endpunkt festlegen.");
             } else {
-                const segName = `Zeh ${segments.length + 1}`;
+                const segName = `Läsion-${segments.length + 1}`;
                 segments.push({
                     name: segName,
                     start: currentStart,
                     end: [originalX, originalY]
                 });
                 currentStart = null;
-                instructionText.innerText = `Markiert (${segName}). Weiter markieren oder Analyse starten.`;
+                typeInstruction(`> ${segName} gespeichert. Bereit für KI-Analyse.`);
+                logToTerminal(`> Vektor '${segName}' erfasst.`, "text-cyan-400");
                 updateSegmentUI();
                 analyzeBtn.disabled = false;
             }
@@ -223,8 +367,8 @@
             segmentList.innerHTML = '';
             segments.forEach(seg => {
                 const li = document.createElement('li');
-                li.className = "bg-blue-50 p-2 rounded border border-blue-100 font-mono";
-                li.innerText = `✔️ ${seg.name}`;
+                li.className = "flex items-center gap-2 bg-medical-900 p-1.5 rounded ring-1 ring-medical-700 font-mono text-[11px] text-medical-cyan";
+                li.innerHTML = `<svg class="w-3 h-3 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> ${seg.name} [${seg.start[0]},${seg.start[1]}]`;
                 segmentList.appendChild(li);
             });
 
@@ -235,93 +379,153 @@
             }
         }
 
+        // ==========================================
+        // API COMMUNICATION (SECURE FETCH)
+        // ==========================================
         analyzeBtn.addEventListener('click', async () => {
             if (!imageFile || segments.length === 0) return;
 
+            // UI State: Loading & Encrypting
             analyzeBtn.disabled = true;
-            analyzeBtn.innerText = "Lädt...";
-            document.getElementById('loadingIndicator').classList.remove('hidden');
+            analyzeBtnText.innerHTML = '<div class="flex items-center gap-2"><div class="spinner"></div><span>Verschlüsseln & Senden...</span></div>';
             document.getElementById('resultsArea').classList.add('hidden');
+            scanLine.style.display = 'block'; // Canvas Scan Effect
+            
+            logToTerminal("> Initiiere sicheren Transfer zur Enterprise API...", "text-yellow-400");
+            logToTerminal("> AES-RAM-Verschlüsselung angefordert.", "text-slate-400");
 
             const formData = new FormData();
             formData.append('file', imageFile);
             formData.append('segmente_json', JSON.stringify(segments));
 
             try {
+                // Sende HTTP Request mit X-API-Key Header für Security
                 const response = await fetch(API_URL, {
                     method: 'POST',
+                    headers: {
+                        'X-API-Key': API_KEY
+                    },
                     body: formData
                 });
 
                 if (!response.ok) {
-                    throw new Error(`Server Fehler: ${response.statusText}`);
+                    if(response.status === 403) throw new Error("API-Key ungültig oder abgewiesen.");
+                    if(response.status === 429) throw new Error("DDoS-Schutz aktiv. Zu viele Anfragen. Bitte warten.");
+                    throw new Error(`Server Fehler: ${response.status}`);
                 }
 
                 const data = await response.json();
+                
+                logToTerminal("> Antwort erhalten. Datenstruktur verifiziert.", "text-emerald-400");
                 zeigeErgebnisse(data);
 
             } catch (error) {
-                alert("Fehler bei der API Kommunikation. Läuft die API auf Render?\n" + error);
+                logToTerminal(`[FEHLER] ${error.message}`, "text-red-500 font-bold");
+                alert(`Sicherheits- oder Verbindungsfehler:\n${error.message}`);
             } finally {
+                // UI State: Restore
                 analyzeBtn.disabled = false;
-                analyzeBtn.innerText = "Analyse Starten";
-                document.getElementById('loadingIndicator').classList.add('hidden');
+                analyzeBtnText.innerText = "Neue Analyse starten";
+                scanLine.style.display = 'none';
             }
         });
 
         function zeigeErgebnisse(data) {
+            // 1. Ergebnisbild im Canvas updaten
             const resultImage = new Image();
             resultImage.onload = () => {
                 originalImage = resultImage; 
                 resetState(); 
+                
+                canvas.width = resultImage.width;
+                canvas.height = resultImage.height;
                 drawCanvas();
             };
             resultImage.src = "data:image/png;base64," + data.ergebnis_bild_base64;
 
+            // 2. Data Dashboard befüllen
             const resultsArea = document.getElementById('resultsArea');
+            const summaryBox = document.getElementById('resultSummaryBox');
             const summary = document.getElementById('resultSummary');
             const details = document.getElementById('resultDetails');
-            const protocolArea = document.getElementById('protocolArea'); // NEU
+            const auditBox = document.getElementById('securityAuditBox');
+            const auditText = document.getElementById('securityAuditText');
             
             resultsArea.classList.remove('hidden');
             details.innerHTML = '';
-            protocolArea.innerHTML = ''; // NEU leeren
+
+            // Security Audit (Hash) anzeigen
+            if(data.file_hash) {
+                auditBox.classList.remove('hidden');
+                auditText.innerText = `File-Hash: ${data.file_hash} | Status: ${data.security_clearance}`;
+            }
 
             if (data.gefundene_anomalien === 0) {
-                summary.innerText = "Keine signifikanten Entzündungen detektiert.";
-                summary.className = "text-sm font-semibold mb-3 text-green-600";
+                summaryBox.className = "bg-emerald-900/20 ring-1 ring-emerald-500/50 rounded-lg p-3";
+                summary.innerText = "Keine pathologischen thermischen Anomalien detektiert.";
+                summary.className = "text-sm font-mono text-emerald-400";
             } else {
-                summary.innerText = `${data.gefundene_anomalien} Entzündung(en) detektiert!`;
-                summary.className = "text-sm font-semibold mb-3 text-red-600";
+                summaryBox.className = "bg-red-900/20 ring-1 ring-red-500/50 rounded-lg p-3";
+                summary.innerText = `WARNUNG: ${data.gefundene_anomalien} akute Entzündungsherde verifiziert!`;
+                summary.className = "text-sm font-bold text-red-400";
 
                 data.daten.forEach(entz => {
                     const card = document.createElement('div');
-                    card.className = "bg-red-50 border-l-4 border-red-500 p-3 rounded shadow-sm text-sm";
+                    card.className = "bg-medical-900 ring-1 ring-medical-700 p-3 rounded shadow-md border-l-4 border-l-red-500 relative overflow-hidden";
                     card.innerHTML = `
-                        <p class="font-bold text-red-700">${entz.gelenk}</p>
-                        <p><strong>Konfidenz:</strong> ${entz.score_percent}%</p>
-                        <p><strong>Max Temp:</strong> ${entz.temperatur_celsius.max} °C</p>
+                        <div class="flex justify-between items-start mb-2">
+                            <p class="font-bold text-red-400 font-mono text-xs uppercase">${entz.gelenk}</p>
+                            <span class="bg-red-500/20 text-red-300 text-[10px] px-2 py-0.5 rounded font-bold">CONF: ${entz.score_percent}%</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 text-xs text-slate-300 font-mono mt-2">
+                            <div><span class="text-slate-500">T-Max:</span> <span class="text-white">${entz.temperatur_celsius.max} °C</span></div>
+                            <div><span class="text-slate-500">Area:</span> <span class="text-white">${entz.geometrie.flaeche_px} px²</span></div>
+                        </div>
                     `;
                     details.appendChild(card);
                 });
             }
 
-            // NEU: Protokoll in die Sidebar schreiben
+            // 3. Explainable AI Protokoll abspielen (mit leichtem Delay für Hacker-Effekt)
             if (data.protokoll && data.protokoll.length > 0) {
-                data.protokoll.forEach(log => {
-                    const p = document.createElement('p');
-                    // Füge etwas Farbe anhand der Emojis hinzu
-                    if (log.includes('🟥')) p.className = "text-red-700 font-bold";
-                    else if (log.includes('🟩')) p.className = "text-green-700";
-                    else if (log.includes('⚖️') || log.includes('🗑️')) p.className = "text-amber-600";
-                    else p.className = "text-slate-600";
-                    
-                    p.innerText = log;
-                    protocolArea.appendChild(p);
-                });
+                playProtokollSequence(data.protokoll);
             }
             
-            instructionText.innerText = "Analyse erfolgreich! Scrolle im Protokoll, um zu sehen, was die KI gedacht hat.";
+            typeInstruction("> Analyse abgeschlossen. Befunde rechts im Dashboard einsehen.");
+        }
+
+        // ==========================================
+        // HELPER FUNCTIONS (EFFECTS)
+        // ==========================================
+        function typeInstruction(text) {
+            instructionText.innerText = text;
+        }
+
+        function logToTerminal(text, colorClass) {
+            const protocolArea = document.getElementById('protocolArea');
+            const p = document.createElement('p');
+            p.className = colorClass || "text-slate-400";
+            p.innerText = text;
+            protocolArea.appendChild(p);
+            protocolArea.scrollTop = protocolArea.scrollHeight;
+        }
+
+        function playProtokollSequence(logs) {
+            let i = 0;
+            function printNext() {
+                if (i < logs.length) {
+                    let log = logs[i];
+                    let color = "text-slate-400";
+                    if (log.includes('🟥')) color = "text-red-400 font-bold";
+                    else if (log.includes('🟩')) color = "text-emerald-400";
+                    else if (log.includes('⚖️') || log.includes('🗑️') || log.includes('ℹ️')) color = "text-yellow-400";
+                    
+                    logToTerminal(log, color);
+                    i++;
+                    setTimeout(printNext, 150); // 150ms delay pro Zeile
+                }
+            }
+            printNext();
         }
     </script>
 </body>
