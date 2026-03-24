@@ -47,12 +47,12 @@ class ThermalConfig:
     suchradius_pixel: int = 80            
     min_kontur_flaeche: int = 12          # <--- Geändert auf 12 (verhindert das Ausfiltern der heißen Zehenspitzen)
     
-    score_gewicht_absolut: float = 0.35    
+    score_gewicht_absolut: float = 0.40    # <--- ERHÖHT: Absolute Hitze ist der wichtigste Faktor
     score_gewicht_kontrast: float = 0.30   
     score_gewicht_asymmetrie: float = 0.20 
-    score_gewicht_form: float = 0.15       
+    score_gewicht_form: float = 0.10       # <--- REDUZIERT: Zehen-Entzündungen sind oft länglich, nicht kreisrund
     
-    min_confidence_score: float = 85.0    
+    min_confidence_score: float = 80.0    # <--- ANGEPASST: 80% ist ein exzellenter klinischer Cutoff
     nms_overlap_distanz: int = 45         
     
     use_watershed_segmentation: bool = False # <--- Deaktiviert, da es glatte Wärmeverläufe zu stark zersplittert
@@ -634,7 +634,7 @@ class ThermalAnalyzer:
                         bounding_box=(x, y, w, h)
                     ))
             else:
-                self.analyse_protokoll.append(f"🟩 {seg['name']}: Topologische Analyse unauffällig. Keine Kohäsion.")
+                self.analyse_protokoll.append(f"🟩 {seg['name']}: Topologische Analyse unauffällig. Keine Hitze-Kohäsion (Gewebe gesund).")
                     
         # 5. Non-Maximum Suppression (Räumliche Duplikatsbereinigung)
         if self.alle_kandidaten:
