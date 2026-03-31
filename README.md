@@ -40,7 +40,8 @@ ThermoAI Vision ist ein fortschrittliches System zur automatisierten Erkennung v
 Um das Backend für das Web-Dashboard bereitzustellen:
 
 ```
-uvicorn api:app --host 0.0.0.0 --port 8000 --reload```
+uvicorn api:app --host 0.0.0.0 --port 8000 --reload
+```
 
 Anschließend die Datei `Web/index.html` im Browser öffnen.
 (Hinweis: Für die lokale Nutzung in der index.html die API_URL ggf. auf http://localhost:8000/analyze anpassen).
