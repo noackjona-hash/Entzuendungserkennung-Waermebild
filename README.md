@@ -32,8 +32,7 @@ ThermoAI Vision ist ein fortschrittliches System zur automatisierten Erkennung v
     ```python -m venv venv
     source venv/bin/activate  # Windows: venv\Scripts\activate```
 3. Abhöngigkeiten installieren:
-    ```pip install -r requirements.txt
-    ```
+    ```pip install -r requirements.txt```
 
 ## 💻 Nutzung
 
