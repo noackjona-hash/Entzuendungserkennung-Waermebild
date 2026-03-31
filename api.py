@@ -1,24 +1,23 @@
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, Request
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security.api_key import APIKeyHeader
 from cryptography.fernet import Fernet
 import uvicorn
-import json
+import cv2
+import numpy as np
 import base64
 import time
 import hashlib
 from typing import Dict, Tuple
 
-# Importiere deinen Algorithmus (bleibt unverändert!)
 from berechnung import ThermalAnalyzer
+from fussfinder import FootFinder
 
 # =====================================================================
 # ENTERPRISE SECURITY CONFIGURATION (DSGVO / HIPAA COMPLIANCE)
 # =====================================================================
 
-# 1. API KEY AUTHENTIFIZIERUNG
-# Nur autorisierte Frontends dürfen Anfragen senden
 API_KEY = "jf2026-jona-super-secret-key-9988"
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -27,14 +26,9 @@ async def verify_api_key(api_key: str = Depends(api_key_header)):
         raise HTTPException(status_code=403, detail="Zugriff verweigert. Ungültiger oder fehlender API-Key.")
     return api_key
 
-# 2. IN-MEMORY ENCRYPTION (VOLATILE KEY)
-# Erstellt bei jedem Serverstart einen neuen AES-Verschlüsselungs-Key.
-# Bilder im RAM werden verschlüsselt. Stirbt der Server, sind alle Daten unwiderruflich weg (Privacy by Design).
 VOLATILE_SECRET_KEY = Fernet.generate_key()
 cipher_suite = Fernet(VOLATILE_SECRET_KEY)
 
-# 3. RATE LIMITING (DDoS Protection)
-# Verhindert, dass Bots die API mit Bildern überfluten und den RAM füllen.
 RATE_LIMIT_REQUESTS = 10
 RATE_LIMIT_WINDOW_SEC = 60
 ip_request_counts: Dict[str, Tuple[int, float]] = {}
@@ -61,19 +55,17 @@ def check_rate_limit(request: Request):
 app = FastAPI(
     title="Jugend Forscht 2026 - Thermografie Med-API",
     description="Hochsichere, verschlüsselte In-Memory API zur Erkennung von Entzündungen.",
-    version="3.0-Enterprise"
+    version="4.0-Enterprise-Autofocus"
 )
 
-# Strenge CORS-Richtlinien (Nur spezifische Zugriffe erlauben)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In echter Produktion hier die genaue Domain eintragen!
+    allow_origins=["*"], 
     allow_credentials=True,
-    allow_methods=["POST"], # Nur POST erlauben, kein GET/PUT/DELETE
+    allow_methods=["POST"], 
     allow_headers=["X-API-Key", "Content-Type"],
 )
 
-# Eigene Middleware für Security Headers
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     response = await call_next(request)
@@ -86,62 +78,59 @@ async def add_security_headers(request: Request, call_next):
 # HAUPT-ENDPUNKT DER API
 # =====================================================================
 
-@app.post("/analyze", summary="Sichere In-Memory Wärmebild-Analyse")
+@app.post("/analyze", summary="Vollautomatische In-Memory Wärmebild-Analyse")
 async def analyze_thermal_image(
     request: Request,
     file: UploadFile = File(...),
-    segmente_json: str = Form(...),
-    api_key: str = Depends(verify_api_key) # Erzwingt Authentifizierung
+    api_key: str = Depends(verify_api_key) 
 ):
     """
-    Nimmt das Bild entgegen, verschlüsselt es sofort im RAM, entschlüsselt es nur für 
-    die OpenCV-Pipeline und gibt die verifizierten medizinischen Daten zurück.
-    Keine Daten verlassen jemals unverschlüsselt den Arbeitsspeicher.
+    Nimmt das Bild entgegen, verschlüsselt es sofort im RAM.
+    Findet vollautomatisch die Zehen (Anatomical Anchor) und sucht nach Entzündungen.
     """
-    # 1. DDoS / Rate Limit Check
     check_rate_limit(request)
-    
-    # 2. Input Validation (Schutz vor Code-Injection im JSON)
-    try:
-        segmente = json.loads(segmente_json)
-        if not isinstance(segmente, list):
-            raise ValueError("Segmente müssen eine Liste sein.")
-    except Exception:
-        raise HTTPException(status_code=400, detail="Ungültiges oder manipulatives JSON-Format.")
         
     try:
-        # 3. Secure File Handling & Immediate RAM Encryption
-        # Anstatt das Bild roh im RAM zu halten, verschlüsseln wir es!
         raw_bytes = await file.read()
-        
-        # Hash des Originalbildes berechnen (für sicheres Logging ohne Bilddaten preiszugeben)
         file_hash = hashlib.sha256(raw_bytes).hexdigest()[:12]
         print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] REQUEST SECURED. File-Hash: {file_hash}")
         
         # Bild im RAM verschlüsseln
         encrypted_bytes = cipher_suite.encrypt(raw_bytes)
-        
-        # Originalbytes aus dem Speicher löschen (Python Garbage Collector anstoßen)
         del raw_bytes 
         
         # ============================================================
         # BERECHNUNGS-PIPELINE (CRITICAL SECTION)
         # ============================================================
-        
-        # Für den Bruchteil der Analyse entschlüsseln
         decrypted_bytes_for_analysis = cipher_suite.decrypt(encrypted_bytes)
         
-        analyzer = ThermalAnalyzer(bild_bytes=decrypted_bytes_for_analysis, segmente=segmente)
+        # 1. Bild dekodieren für den Fussfinder
+        array = np.frombuffer(decrypted_bytes_for_analysis, dtype=np.uint8)
+        bild_cv = cv2.imdecode(array, cv2.IMREAD_COLOR)
+        
+        if bild_cv is None:
+            raise ValueError("Konnte Bild nicht lesen.")
+
+        # 2. Vollautomatische Zehen-Detektion (Anatomical Anchor V13)
+        auto_messpunkte = FootFinder.find_toes(bild_cv)
+        
+        # 3. Entzündungsanalyse an den gefundenen Punkten
+        analyzer = ThermalAnalyzer(bild_bytes=decrypted_bytes_for_analysis, messpunkte=auto_messpunkte)
+        
+        if len(auto_messpunkte) > 0:
+            analyzer.analyse_protokoll.insert(0, f"👣 Anatomical Anchor: {len(auto_messpunkte)} Zehen vollautomatisch detektiert und anvisiert.")
+        else:
+            analyzer.analyse_protokoll.insert(0, f"⚠️ Anatomical Anchor: Keine klaren Fuß/Zeh-Strukturen erkannt. Analyse fällt auf Baseline zurück.")
+
         ergebnisse = analyzer.analysiere() 
         img_base64 = analyzer.render_base64()
         
-        # Sensible Bilddaten sofort wieder aus dem RAM zerstören
         del decrypted_bytes_for_analysis
         del encrypted_bytes
-        
+        del bild_cv
+        del array
         # ============================================================
         
-        # 4. Datenaufbereitung für das Frontend
         export_daten = []
         for e in ergebnisse:
             export_daten.append({
@@ -155,6 +144,7 @@ async def analyze_thermal_image(
             "status": "success",
             "security_clearance": "Data fully encrypted in transit and at rest (RAM).",
             "file_hash": file_hash,
+            "gefundene_zehen": len(auto_messpunkte),
             "gefundene_anomalien": len(ergebnisse),
             "daten": export_daten,
             "protokoll": analyzer.analyse_protokoll, 
@@ -167,7 +157,7 @@ async def analyze_thermal_image(
 
 if __name__ == "__main__":
     print("="*50)
-    print(" STARTING ENTERPRISE MEDICAL API")
+    print(" STARTING ENTERPRISE MEDICAL API (AUTOFOCUS EDITION)")
     print(" - In-Memory Encryption: ENABLED")
     print(" - API-Key Protection:   ENABLED")
     print(" - Rate Limiting:        ENABLED")
