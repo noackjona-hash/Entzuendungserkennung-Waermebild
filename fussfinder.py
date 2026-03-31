@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Any
 
 class FootFinder:
     """
