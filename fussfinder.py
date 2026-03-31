@@ -7,7 +7,7 @@ from PIL import Image, ImageTk
 class ThermalAnalyzerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Wärmebild Analyse - FLIR Red-Channel Tracker V11")
+        self.root.title("Wärmebild Analyse - Topographic Tracker V12")
         self.root.geometry("800x650")
         self.root.configure(bg="#2c3e50")
 
@@ -55,23 +55,15 @@ class ThermalAnalyzerApp:
         
         output_img = self.original_img.copy()
 
-        # --- DER FLIR IRONBOW TRICK (V11) ---
-        # Spalte das Bild in Blau, Grün und Rot auf. Wir nutzen NUR den Rot-Kanal.
-        b_channel, g_channel, r_channel = cv2.split(self.original_img)
-        
-        # Den Rot-Kanal weichzeichnen, um Rauschen zu killen
+        # Roter Kanal & Otsu-Threshold (aus V11) für perfekte Kanten
+        _, _, r_channel = cv2.split(self.original_img)
         blurred_r = cv2.GaussianBlur(r_channel, (11, 11), 0)
-
-        # Otsu's Methode berechnet den mathematisch perfekten Schwellenwert 
-        # zwischen Fuß (Rot-Anteil hoch) und Hintergrund (Rot-Anteil null).
         otsu_val, _ = cv2.threshold(blurred_r, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-        # Wir nehmen 80% des perfekten Wertes zur Sicherheit, um auch eisige Zehen zu fangen,
-        # aber ohne den dunklen Hintergrund anzufassen.
+        # Toleranz beibehalten, um kalte Zehen zu erfassen
         final_thresh = int(otsu_val * 0.8)
         _, thresh = cv2.threshold(blurred_r, final_thresh, 255, cv2.THRESH_BINARY)
 
-        # Letzte Krümel im Hintergrund wegradieren und Löcher stopfen
         kernel = np.ones((9, 9), np.uint8)
         thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
         thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
@@ -85,13 +77,12 @@ class ThermalAnalyzerApp:
             sorted_contours = sorted(contours, key=cv2.contourArea, reverse=True)
             
             for contour in sorted_contours[:2]:
-                # Ignoriere alles, was zu klein ist (Hintergrund-Artefakte)
                 if cv2.contourArea(contour) > 8000:
                     feet_found += 1
                     cv2.drawContours(output_img, [contour], -1, (255, 0, 0), 2)
                     
                     x, y, w, h = cv2.boundingRect(contour)
-                    toe_zone_limit = y + int(h * 0.25)
+                    toe_zone_limit = y + int(h * 0.30) # Zone für Zehen
                     top_points = [p[0] for p in contour if p[0][1] < toe_zone_limit]
                     
                     if len(top_points) > 20:
@@ -103,34 +94,65 @@ class ThermalAnalyzerApp:
                         sorted_x = sorted(top_boundary_map.keys())
                         boundary_y = [top_boundary_map[x] for x in sorted_x]
                         
-                        # Die V9 Convolution-Glättung beibehalten
+                        # Glättung der Kontur (vermeidet Treppeneffekte)
                         window_size = 11 
                         conv_kernel = np.ones(window_size) / window_size
                         smoothed_y = np.convolve(boundary_y, conv_kernel, mode='same')
                         
-                        # 5-Sektoren Anatomie-Zwang (aus V10)
-                        min_x = sorted_x[0]
-                        max_x = sorted_x[-1]
-                        zone_width = max_x - min_x
-                        segment_width = zone_width / 5.0
+                        # --- FIX: THE TOPOGRAPHIC WALK (Zehen-Massiv isolieren) ---
                         
-                        for i in range(5):
-                            seg_min_x = min_x + i * segment_width
-                            seg_max_x = min_x + (i + 1) * segment_width
+                        # 1. Höchsten Punkt finden (Zeh-Spitze) -> Kleinstes Y
+                        best_idx = np.argmin(smoothed_y)
+                        peak_y = smoothed_y[best_idx]
+                        
+                        # 2. Abbruch-Kante definieren (ca. 18% der Fußhöhe nach unten)
+                        # Wenn die Linie tiefer als das fällt, sind wir an der Seite des Fußes angekommen.
+                        dropoff_limit = peak_y + (h * 0.18)
+                        
+                        # 3. Nach links laufen
+                        left_bound = best_idx
+                        while left_bound > 0:
+                            if smoothed_y[left_bound] > dropoff_limit:
+                                break # Absturz in die Schlucht -> STOP!
+                            left_bound -= 1
                             
-                            segment_indices = [idx for idx, sx in enumerate(sorted_x) if seg_min_x <= sx <= seg_max_x]
-                            valid_indices = [idx for idx in segment_indices if 5 < idx < len(smoothed_y)-5]
+                        # 4. Nach rechts laufen
+                        right_bound = best_idx
+                        while right_bound < len(smoothed_y) - 1:
+                            if smoothed_y[right_bound] > dropoff_limit:
+                                break # Absturz in die Schlucht -> STOP!
+                            right_bound += 1
                             
-                            if valid_indices:
-                                best_idx = min(valid_indices, key=lambda idx: smoothed_y[idx])
-                                peak_x = sorted_x[best_idx]
-                                peak_y = boundary_y[best_idx]
+                        # 5. Nur noch die saubere, isolierte Zehen-Kuppe nutzen!
+                        toe_x = sorted_x[left_bound:right_bound+1]
+                        toe_y = smoothed_y[left_bound:right_bound+1]
+                        orig_toe_y = boundary_y[left_bound:right_bound+1]
+                        
+                        if len(toe_x) > 10:
+                            # Anatomy Forcer: Wir teilen nun diese PERFEKT isolierte Kuppe durch 5!
+                            min_x = toe_x[0]
+                            max_x = toe_x[-1]
+                            zone_width = max_x - min_x
+                            segment_width = zone_width / 5.0
+                            
+                            for i in range(5):
+                                seg_min_x = min_x + i * segment_width
+                                seg_max_x = min_x + (i + 1) * segment_width
                                 
-                                draw_p = (peak_x, peak_y + 4)
-                                cv2.circle(output_img, draw_p, 6, (0, 255, 0), -1)
-                                toes_marked += 1
+                                segment_indices = [idx for idx, sx in enumerate(toe_x) if seg_min_x <= sx <= seg_max_x]
+                                
+                                if segment_indices:
+                                    # Finde das Minimum (höchster Punkt) in diesem der 5 Sektoren
+                                    local_best_idx = min(segment_indices, key=lambda idx: toe_y[idx])
+                                    
+                                    final_px = toe_x[local_best_idx]
+                                    final_py = orig_toe_y[local_best_idx]
+                                    
+                                    draw_p = (final_px, final_py + 4)
+                                    cv2.circle(output_img, draw_p, 6, (0, 255, 0), -1)
+                                    toes_marked += 1
         
-        status_text = f"{feet_found} Füße gefunden. {toes_marked} Zehen erfasst."
+        status_text = f"{feet_found} Füße gefunden. {toes_marked} Zehen präzise erfasst."
         self.status_label.config(text=status_text, fg="#2ecc71")
         
         output_rgb = cv2.cvtColor(output_img, cv2.COLOR_BGR2RGB)
