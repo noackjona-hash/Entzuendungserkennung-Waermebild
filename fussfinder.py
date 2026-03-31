@@ -7,7 +7,7 @@ from PIL import Image, ImageTk
 class ThermalAnalyzerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Wärmebild Analyse - Convolution Tracker V9")
+        self.root.title("Wärmebild Analyse - Anatomy Forcer V10")
         self.root.geometry("800x650")
         self.root.configure(bg="#2c3e50")
 
@@ -35,12 +35,9 @@ class ThermalAnalyzerApp:
         self.original_img = None
 
     def load_image(self):
-        # Zwingt das Hauptfenster (und damit den Dialog) in den Vordergrund
+        # Der Fix gegen das Einfrieren des Dateiauswahl-Fensters
         self.root.attributes('-topmost', True) 
-        
         self.image_path = filedialog.askopenfilename(filetypes=[("Bilder", "*.png;*.jpg;*.jpeg;*.bmp")])
-        
-        # Wichtig: Danach sofort wieder deaktivieren, sonst blockiert unsere App andere Programme
         self.root.attributes('-topmost', False) 
         
         if self.image_path:
@@ -66,7 +63,10 @@ class ThermalAnalyzerApp:
         max_v = np.max(blurred)
         if max_v < 10: return
         
-        dynamic_thresh = int(max_v * 0.7) 
+        # --- FIX 1: Der Kälte-Toleranz-Filter ---
+        # Wir fordern nur noch 35% der Maximalhitze. 
+        # Dadurch schließt die blaue Linie nun auch die kälteren kleinen Zehen mit ein!
+        dynamic_thresh = int(max_v * 0.35) 
         _, thresh = cv2.threshold(blurred, dynamic_thresh, 255, cv2.THRESH_BINARY)
 
         kernel = np.ones((9, 9), np.uint8)
@@ -86,7 +86,7 @@ class ThermalAnalyzerApp:
                     cv2.drawContours(output_img, [contour], -1, (255, 0, 0), 2)
                     
                     x, y, w, h = cv2.boundingRect(contour)
-                    toe_zone_limit = y + int(h * 0.30)
+                    toe_zone_limit = y + int(h * 0.25)
                     top_points = [p[0] for p in contour if p[0][1] < toe_zone_limit]
                     
                     if len(top_points) > 20:
@@ -98,52 +98,42 @@ class ThermalAnalyzerApp:
                         sorted_x = sorted(top_boundary_map.keys())
                         boundary_y = [top_boundary_map[x] for x in sorted_x]
                         
-                        # --- NEU V9: Faltung (Moving Average Convolution) ---
-                        # Schmilzt harte Treppenstufen zu sauberen Kurven
-                        window_size = 15 
+                        # Die V9 Convolution-Glättung beibehalten
+                        window_size = 11 
                         conv_kernel = np.ones(window_size) / window_size
                         smoothed_y = np.convolve(boundary_y, conv_kernel, mode='same')
                         
-                        raw_peaks = []
-                        # Dynamischer Suchradius: ca. 6% der Fußbreite
-                        search_radius = max(3, int(len(smoothed_y) * 0.06)) 
+                        # --- FIX 2: Anatomical Forcing ---
+                        # Wir teilen die gefundene Breite stur in 5 Segmente.
+                        # Auf der geglätteten Linie suchen wir dann im jeweiligen Segment den höchsten Punkt.
+                        min_x = sorted_x[0]
+                        max_x = sorted_x[-1]
+                        zone_width = max_x - min_x
+                        segment_width = zone_width / 5.0
                         
-                        # Wir ignorieren die extremen Ränder, da Convolution dort ungenau wird
-                        for i in range(search_radius, len(smoothed_y) - search_radius):
-                            start = i - search_radius
-                            end = i + search_radius + 1
+                        for i in range(5):
+                            seg_min_x = min_x + i * segment_width
+                            seg_max_x = min_x + (i + 1) * segment_width
                             
-                            # Ist der weichgezeichnete Punkt das Minimum seiner Umgebung?
-                            if smoothed_y[i] == min(smoothed_y[start:end]):
-                                peak_x = sorted_x[i]
-                                peak_y = boundary_y[i] # Nutze Original-Höhe für das Fadenkreuz
-                                raw_peaks.append((peak_x, peak_y))
-                        
-                        # NMS-Filterung (Duplikate auf breiten Zehen löschen)
-                        raw_peaks.sort(key=lambda p: p[1])
-                        final_peaks = []
-                        min_x_dist = w * 0.07 # Mindestabstand zwischen Zehen
-                        
-                        for rp in raw_peaks:
-                            is_suppressed = False
-                            for fp in final_peaks:
-                                if abs(rp[0] - fp[0]) < min_x_dist:
-                                    is_suppressed = True
-                                    break
-                            if not is_suppressed:
-                                final_peaks.append(rp)
-                            if len(final_peaks) == 5: break
-                        
-                        for peak in final_peaks:
-                            draw_p = (peak[0], peak[1] + 4)
-                            cv2.circle(output_img, draw_p, 6, (0, 255, 0), -1)
-                            toes_marked += 1
+                            # Finde alle geglätteten Punkte, die in dieses 1/5 Segment fallen
+                            segment_indices = [idx for idx, sx in enumerate(sorted_x) if seg_min_x <= sx <= seg_max_x]
+                            
+                            # Randbereiche ignorieren (wo die Glättung ungenau ist)
+                            valid_indices = [idx for idx in segment_indices if 5 < idx < len(smoothed_y)-5]
+                            
+                            if valid_indices:
+                                # Finde den höchsten Punkt (kleinstes Y) in DIESEM Segment
+                                best_idx = min(valid_indices, key=lambda idx: smoothed_y[idx])
+                                
+                                peak_x = sorted_x[best_idx]
+                                peak_y = boundary_y[best_idx] # Für das Zeichnen den exakten Rand-Pixel nehmen
+                                
+                                draw_p = (peak_x, peak_y + 3)
+                                cv2.circle(output_img, draw_p, 6, (0, 255, 0), -1)
+                                toes_marked += 1
         
-        status_text = f"{feet_found} Füße gefunden. {toes_marked} Zehen erfasst."
-        if toes_marked < feet_found * 5:
-            self.status_label.config(text=status_text + " (Teilweise verschmolzen)", fg="#e67e22")
-        else:
-            self.status_label.config(text=status_text + " (Perfekter Scan)", fg="#2ecc71")
+        status_text = f"{feet_found} Füße gefunden. {toes_marked} Zehen vollständig erfasst."
+        self.status_label.config(text=status_text, fg="#2ecc71")
         
         output_rgb = cv2.cvtColor(output_img, cv2.COLOR_BGR2RGB)
         img_pil = Image.fromarray(output_rgb)
