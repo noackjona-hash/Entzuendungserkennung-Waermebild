@@ -7,7 +7,7 @@ from PIL import Image, ImageTk
 class ThermalAnalyzerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Wärmebild Analyse - Anatomy Forcer V10")
+        self.root.title("Wärmebild Analyse - FLIR Red-Channel Tracker V11")
         self.root.geometry("800x650")
         self.root.configure(bg="#2c3e50")
 
@@ -35,7 +35,6 @@ class ThermalAnalyzerApp:
         self.original_img = None
 
     def load_image(self):
-        # Der Fix gegen das Einfrieren des Dateiauswahl-Fensters
         self.root.attributes('-topmost', True) 
         self.image_path = filedialog.askopenfilename(filetypes=[("Bilder", "*.png;*.jpg;*.jpeg;*.bmp")])
         self.root.attributes('-topmost', False) 
@@ -56,20 +55,25 @@ class ThermalAnalyzerApp:
         
         output_img = self.original_img.copy()
 
-        hsv = cv2.cvtColor(self.original_img, cv2.COLOR_BGR2HSV)
-        v_channel = hsv[:, :, 2]
-        blurred = cv2.GaussianBlur(v_channel, (11, 11), 0)
-
-        max_v = np.max(blurred)
-        if max_v < 10: return
+        # --- DER FLIR IRONBOW TRICK (V11) ---
+        # Spalte das Bild in Blau, Grün und Rot auf. Wir nutzen NUR den Rot-Kanal.
+        b_channel, g_channel, r_channel = cv2.split(self.original_img)
         
-        # --- FIX 1: Der Kälte-Toleranz-Filter ---
-        # Wir fordern nur noch 35% der Maximalhitze. 
-        # Dadurch schließt die blaue Linie nun auch die kälteren kleinen Zehen mit ein!
-        dynamic_thresh = int(max_v * 0.35) 
-        _, thresh = cv2.threshold(blurred, dynamic_thresh, 255, cv2.THRESH_BINARY)
+        # Den Rot-Kanal weichzeichnen, um Rauschen zu killen
+        blurred_r = cv2.GaussianBlur(r_channel, (11, 11), 0)
 
+        # Otsu's Methode berechnet den mathematisch perfekten Schwellenwert 
+        # zwischen Fuß (Rot-Anteil hoch) und Hintergrund (Rot-Anteil null).
+        otsu_val, _ = cv2.threshold(blurred_r, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+        # Wir nehmen 80% des perfekten Wertes zur Sicherheit, um auch eisige Zehen zu fangen,
+        # aber ohne den dunklen Hintergrund anzufassen.
+        final_thresh = int(otsu_val * 0.8)
+        _, thresh = cv2.threshold(blurred_r, final_thresh, 255, cv2.THRESH_BINARY)
+
+        # Letzte Krümel im Hintergrund wegradieren und Löcher stopfen
         kernel = np.ones((9, 9), np.uint8)
+        thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
         thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
         
         contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -81,6 +85,7 @@ class ThermalAnalyzerApp:
             sorted_contours = sorted(contours, key=cv2.contourArea, reverse=True)
             
             for contour in sorted_contours[:2]:
+                # Ignoriere alles, was zu klein ist (Hintergrund-Artefakte)
                 if cv2.contourArea(contour) > 8000:
                     feet_found += 1
                     cv2.drawContours(output_img, [contour], -1, (255, 0, 0), 2)
@@ -103,9 +108,7 @@ class ThermalAnalyzerApp:
                         conv_kernel = np.ones(window_size) / window_size
                         smoothed_y = np.convolve(boundary_y, conv_kernel, mode='same')
                         
-                        # --- FIX 2: Anatomical Forcing ---
-                        # Wir teilen die gefundene Breite stur in 5 Segmente.
-                        # Auf der geglätteten Linie suchen wir dann im jeweiligen Segment den höchsten Punkt.
+                        # 5-Sektoren Anatomie-Zwang (aus V10)
                         min_x = sorted_x[0]
                         max_x = sorted_x[-1]
                         zone_width = max_x - min_x
@@ -115,24 +118,19 @@ class ThermalAnalyzerApp:
                             seg_min_x = min_x + i * segment_width
                             seg_max_x = min_x + (i + 1) * segment_width
                             
-                            # Finde alle geglätteten Punkte, die in dieses 1/5 Segment fallen
                             segment_indices = [idx for idx, sx in enumerate(sorted_x) if seg_min_x <= sx <= seg_max_x]
-                            
-                            # Randbereiche ignorieren (wo die Glättung ungenau ist)
                             valid_indices = [idx for idx in segment_indices if 5 < idx < len(smoothed_y)-5]
                             
                             if valid_indices:
-                                # Finde den höchsten Punkt (kleinstes Y) in DIESEM Segment
                                 best_idx = min(valid_indices, key=lambda idx: smoothed_y[idx])
-                                
                                 peak_x = sorted_x[best_idx]
-                                peak_y = boundary_y[best_idx] # Für das Zeichnen den exakten Rand-Pixel nehmen
+                                peak_y = boundary_y[best_idx]
                                 
-                                draw_p = (peak_x, peak_y + 3)
+                                draw_p = (peak_x, peak_y + 4)
                                 cv2.circle(output_img, draw_p, 6, (0, 255, 0), -1)
                                 toes_marked += 1
         
-        status_text = f"{feet_found} Füße gefunden. {toes_marked} Zehen vollständig erfasst."
+        status_text = f"{feet_found} Füße gefunden. {toes_marked} Zehen erfasst."
         self.status_label.config(text=status_text, fg="#2ecc71")
         
         output_rgb = cv2.cvtColor(output_img, cv2.COLOR_BGR2RGB)
