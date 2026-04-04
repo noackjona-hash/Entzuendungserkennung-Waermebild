@@ -4,25 +4,24 @@ from typing import List, Dict, Any
 
 class FootFinder:
     """
-    Kapselt die vollautomatische Erkennung der Zehen (Anatomical Anchor V16).
-    Kombiniert die Robustheit der Zonen-Aufteilung (V13) mit dynamischer Skalierung.
+    Kapselt die vollautomatische Erkennung der Zehen (Anatomical Anchor V17).
+    Nutzt intelligente Graustufen-Maskierung und geometrische Zehen-Reihen-Isolierung.
     """
 
     @staticmethod
     def find_toes(image: np.ndarray) -> List[Dict[str, Any]]:
         img_h, img_w = image.shape[:2]
         
-        # 1. Der bewährte Roter-Kanal-Trick: 
-        # FLIR Wärmebilder haben bei Hitze extrem hohe Rot-Werte (Gelb/Weiß). 
-        # Das isoliert den Fuß perfekt vom dunklen/blauen Hintergrund.
-        _, _, r_channel = cv2.split(image)
-        blurred = cv2.GaussianBlur(r_channel, (11, 11), 0)
-        otsu_val, _ = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        # 1. Bessere Maskierung: Das GESAMTE Fußprofil erfassen (auch kalte lila Zehen)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        blurred = cv2.GaussianBlur(gray, (9, 9), 0)
         
-        # Schwelle leicht senken (80%), um auch kühlere Zehenspitzen zu erwischen
-        _, thresh = cv2.threshold(blurred, int(otsu_val * 0.8), 255, cv2.THRESH_BINARY)
+        # Otsu berechnen, aber Schwelle drastisch senken (35%), um lila/dunkelrote Ränder zu behalten
+        otsu_val, _ = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        low_thresh = max(15, int(otsu_val * 0.35))
+        _, thresh = cv2.threshold(blurred, low_thresh, 255, cv2.THRESH_BINARY)
 
-        # 2. Morphologische Bereinigung (skaliert mit Bildgröße)
+        # Morphologische Bereinigung
         k_size = max(5, int(img_w * 0.01))
         kernel = np.ones((k_size, k_size), np.uint8)
         thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
@@ -40,16 +39,15 @@ class FootFinder:
         sorted_contours.sort(key=lambda c: cv2.boundingRect(c)[0]) 
         
         for f_idx, contour in enumerate(sorted_contours):
-            # Rauschen ignorieren (kleiner als 1.5% der Bildfläche)
+            # Rauschen ignorieren
             if cv2.contourArea(contour) < (img_w * img_h * 0.015):
                 continue
                 
             x, y, w, h = cv2.boundingRect(contour)
+            fuss_name = "Linker Fuß" if f_idx == 0 else "Rechter Fuß"
             
-            # Nur das obere Drittel analysieren (Zehenzone)
+            # 2. Oberkante extrahieren (oberste 35% des Fußes)
             top_limit = y + int(h * 0.35) 
-            
-            # Profil der Oberkante erstellen
             oberkante = {}
             for pt in contour:
                 px, py = pt[0]
@@ -60,71 +58,55 @@ class FootFinder:
             if len(oberkante) < 20: 
                 continue
                 
-            sorted_x = sorted(oberkante.keys())
-            raw_y = [oberkante[px] for px in sorted_x]
+            # 3. Zehen-Reihe exakt isolieren
+            # Finde den absolut höchsten Punkt des Fußes (Minimum Y auf dem Bildschirm)
+            min_y = min(oberkante.values())
             
-            # Profil mathematisch glätten
-            window_size = max(5, int(w * 0.05))
-            conv_kernel = np.ones(window_size) / window_size
-            smoothed_y = np.convolve(raw_y, conv_kernel, mode='same')
+            # Definiere ein horizontales Band für die Zehen (bis zu 20% der Fußhöhe nach unten)
+            toe_band_limit = min_y + int(h * 0.20)
             
-            # 3. Den "Anatomischen Anker" finden (Höchster Punkt = Großer Zeh)
-            best_idx = np.argmin(smoothed_y) 
-            anchor_x = sorted_x[best_idx]
+            toe_x_coords = [px for px, py in oberkante.items() if py <= toe_band_limit]
             
-            # Schwerpunkt berechnen, um Links/Rechts Ausrichtung zu prüfen
-            M = cv2.moments(contour)
-            center_x = int(M["m10"] / M["m00"]) if M["m00"] != 0 else x + w/2
-            
-            span = w * 0.65 # Ca. 65% der Fußbreite ist Zehen-Reihe
-            
-            if anchor_x < center_x:
-                # Rechter Fuß (Großer Zeh ist links vom Schwerpunkt)
-                start_x = anchor_x - (span * 0.1)
-                end_x = anchor_x + span
-                fuss_name = "Rechter Fuß"
-            else:
-                # Linker Fuß (Großer Zeh ist rechts vom Schwerpunkt)
-                start_x = anchor_x - span
-                end_x = anchor_x + (span * 0.1)
-                fuss_name = "Linker Fuß"
+            if not toe_x_coords:
+                continue
                 
-            # Zonen-Grenzen sichern
-            start_x = max(start_x, sorted_x[0])
-            end_x = min(end_x, sorted_x[-1])
+            span_min_x = min(toe_x_coords)
+            span_max_x = max(toe_x_coords)
             
-            toe_x = []
-            toe_y = []
-            for i, sx in enumerate(sorted_x):
-                if start_x <= sx <= end_x:
-                    toe_x.append(sx)
-                    toe_y.append(smoothed_y[i])
-                    
-            # 4. In 5 Segmente einteilen (für 5 Zehen)
-            if len(toe_x) > 10:
-                zone_width = toe_x[-1] - toe_x[0]
-                segment_width = zone_width / 5.0
+            # 4. In 5 exakte Spalten aufteilen
+            segment_width = (span_max_x - span_min_x) / 5.0
+            foot_points = []
+            
+            for i in range(5):
+                seg_start = span_min_x + i * segment_width
+                seg_end = span_min_x + (i + 1) * segment_width
                 
-                toe_count = 1
-                for i in range(5):
-                    seg_min_x = toe_x[0] + i * segment_width
-                    seg_max_x = toe_x[0] + (i + 1) * segment_width
+                seg_x_coords = [px for px in oberkante.keys() if seg_start <= px <= seg_end]
+                
+                if seg_x_coords:
+                    best_x = min(seg_x_coords, key=lambda px: oberkante[px])
+                    best_y = oberkante[best_x]
                     
-                    segment_indices = [idx for idx, sx in enumerate(toe_x) if seg_min_x <= sx <= seg_max_x]
+                    # V17: Punkt ca. 4% nach unten ins MTP Gelenk schieben
+                    offset_y = int(h * 0.04)
                     
-                    if segment_indices:
-                        # Den höchsten Punkt (Minimum Y) im jeweiligen Segment finden
-                        local_best_idx = min(segment_indices, key=lambda idx: toe_y[idx])
-                        final_px = toe_x[local_best_idx]
-                        final_py = oberkante[final_px]
-                        
-                        # V16: Den Messpunkt ~5% nach unten ins Gelenk schieben (nicht genau auf den Nagel)
-                        offset_y = int(h * 0.05) 
-                        
-                        detected_points.append({
-                            "name": f"{fuss_name} - Zeh {toe_count}",
-                            "punkt": (int(final_px), int(final_py + offset_y))
-                        })
-                        toe_count += 1
-                        
+                    foot_points.append({
+                        "x": best_x,
+                        "y": best_y + offset_y
+                    })
+                    
+            # 5. Korrekte Benennung der 5 Punkte
+            for i, pt in enumerate(foot_points):
+                if fuss_name == "Linker Fuß":
+                    # Im Bild links -> Anatomisch linker Fuß -> Zeh 1 (groß) ist rechts
+                    zeh_nr = 5 - i
+                else:
+                    # Im Bild rechts -> Anatomisch rechter Fuß -> Zeh 1 (groß) ist links
+                    zeh_nr = i + 1
+                    
+                detected_points.append({
+                    "name": f"{fuss_name} - Zeh {zeh_nr}",
+                    "punkt": (int(pt['x']), int(pt['y']))
+                })
+                
         return detected_points
