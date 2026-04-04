@@ -2,16 +2,11 @@ import cv2
 import numpy as np
 import math
 import logging
-import base64
 import time
 import uuid
 from enum import Enum, auto
 from dataclasses import dataclass, field
 from typing import List, Dict, Tuple
-
-# ==============================================================================
-# ENTERPRISE KONFIGURATION & SETUP (STRICT TYPING)
-# ==============================================================================
 
 class SeverityLevel(Enum):
     NORMAL = auto()
@@ -26,7 +21,7 @@ class ThermalConfig:
     temp_max_celsius: float = 42.0
     
     basis_schwellenwert_pixel: int = 210  
-    suchradius_pixel: int = 80            
+    suchradius_pixel: int = 80 # Standardwert, kann überschrieben werden          
     min_kontur_flaeche: int = 12          
     
     score_gewicht_absolut: float = 0.40    
@@ -34,11 +29,8 @@ class ThermalConfig:
     score_gewicht_asymmetrie: float = 0.20 
     score_gewicht_form: float = 0.10       
     
-    min_confidence_score: float = 80.0    
+    min_confidence_score: float = 75.0 # Leicht gesenkt für bessere Sensitivität bei anderen Körperteilen   
     nms_overlap_distanz: int = 45         
-    
-    use_watershed_segmentation: bool = False 
-    calculate_hu_moments: bool = True
 
 @dataclass
 class TemperatureStats:
@@ -47,9 +39,6 @@ class TemperatureStats:
     mean_val: float = 0.0
     median_val: float = 0.0
     std_dev: float = 0.0
-    variance: float = 0.0
-    skewness: float = 0.0
-    kurtosis: float = 0.0
     
     def to_dict(self) -> dict:
         return {
@@ -57,10 +46,7 @@ class TemperatureStats:
             "max": round(self.max_val, 2),
             "mean": round(self.mean_val, 2), 
             "median": round(self.median_val, 2),
-            "std_dev": round(self.std_dev, 2), 
-            "variance": round(self.variance, 2),
-            "skewness": round(self.skewness, 4),
-            "kurtosis": round(self.kurtosis, 4)
+            "std_dev": round(self.std_dev, 2)
         }
 
 @dataclass
@@ -68,18 +54,11 @@ class MorphologyFeatures:
     flaeche: float = 0.0
     umfang: float = 0.0
     zirkularitaet: float = 0.0       
-    aspect_ratio: float = 0.0        
-    solidity: float = 0.0            
-    equivalent_diameter: float = 0.0
-    hu_moments: List[float] = field(default_factory=lambda: [0.0]*7)
     
     def to_dict(self) -> dict:
         return {
             "flaeche_px": round(self.flaeche, 2), 
-            "zirkularitaet": round(self.zirkularitaet, 3),
-            "aspect_ratio": round(self.aspect_ratio, 3), 
-            "solidity": round(self.solidity, 3),
-            "equivalent_diameter": round(self.equivalent_diameter, 2)
+            "zirkularitaet": round(self.zirkularitaet, 3)
         }
 
 @dataclass
@@ -109,41 +88,17 @@ class Entzuendung:
     bounding_box: Tuple[int, int, int, int] = (0, 0, 0, 0) 
     
     def get_severity_color(self) -> Tuple[int, int, int]:
-        if self.score.severity == SeverityLevel.CRITICAL:
-            return (0, 0, 255) # Rot
-        elif self.score.severity == SeverityLevel.SEVERE:
-            return (0, 100, 255) # Dunkelorange
-        elif self.score.severity == SeverityLevel.MODERATE:
-            return (0, 165, 255) # Orange
-        else:
-            return (0, 255, 255) # Gelb
+        if self.score.severity == SeverityLevel.CRITICAL: return (0, 0, 255) # BGR: Rot
+        elif self.score.severity == SeverityLevel.SEVERE: return (0, 100, 255) # Orange
+        elif self.score.severity == SeverityLevel.MODERATE: return (0, 165, 255) 
+        else: return (0, 255, 255) # Gelb
 
 class MathUtils:
-    @staticmethod
-    def calculate_higher_order_stats(pixel_array: np.ndarray) -> Tuple[float, float]:
-        if len(pixel_array) < 3:
-            return 0.0, 0.0
-        mean = np.mean(pixel_array)
-        std = np.std(pixel_array)
-        if std == 0:
-            return 0.0, 0.0
-        n = len(pixel_array)
-        skewness = (np.sum((pixel_array - mean)**3) / n) / (std**3)
-        kurtosis = (np.sum((pixel_array - mean)**4) / n) / (std**4) - 3.0
-        return float(skewness), float(kurtosis)
-
     @staticmethod
     def extract_hu_moments(contour: np.ndarray) -> List[float]:
         moments = cv2.moments(contour)
         hu_moments = cv2.HuMoments(moments)
-        log_hu = []
-        for i in range(0, 7):
-            if hu_moments[i][0] != 0:
-                val = -1 * math.copysign(1.0, hu_moments[i][0]) * math.log10(abs(hu_moments[i][0]))
-                log_hu.append(float(val))
-            else:
-                log_hu.append(0.0)
-        return log_hu
+        return [-1 * math.copysign(1.0, h[0]) * math.log10(abs(h[0])) if h[0] != 0 else 0.0 for h in hu_moments]
 
 class SecurityContext:
     def __init__(self):
@@ -154,27 +109,38 @@ class SecurityContext:
     def verify_integrity(self) -> bool:
         if time.time() - self.creation_time > 300: 
             self.is_secured = False
-            return False
         return self.is_secured
 
 class ThermalAnalyzer:
-    def __init__(self, bild_bytes: bytes, messpunkte: List[dict]):
-        """
-        Initialisiert die Analyse-Engine mit verschlüsselten RAM-Daten und automatisch erkannten Messpunkten.
-        """
+    def __init__(self, bild_bytes: bytes = None, bild_pfad: str = None, messpunkte: List[dict] = None, suchradius: int = 80):
         self.security = SecurityContext()
-        self.messpunkte = messpunkte
+        self.messpunkte = messpunkte or []
         self.config = ThermalConfig()
+        self.config.suchradius_pixel = suchradius # Dynamischer Radius
         self.analyse_protokoll: List[str] = []
         
-        self._setup_logger()
-        self.logger.info(f"Session [{self.security.session_id}] - Starte In-Memory Analyse")
-        
-        self.original_bild = self._lade_bild_aus_bytes(bild_bytes)
+        self.logger = logging.getLogger(f"ThermalAnalyzer_{self.security.session_id}")
+        self.logger.setLevel(logging.INFO)
+        if not self.logger.handlers:
+            ch = logging.StreamHandler()
+            ch.setFormatter(logging.Formatter('%(asctime)s | RAM-SECURE | %(message)s'))
+            self.logger.addHandler(ch)
+            
+        if bild_bytes:
+            self.original_bild = self._lade_bild_aus_bytes(bild_bytes)
+        elif bild_pfad:
+            self.original_bild = cv2.imread(bild_pfad)
+            if self.original_bild is None: raise ValueError(f"Bild nicht gefunden: {bild_pfad}")
+        else:
+            raise ValueError("Weder Bild-Bytes noch Bild-Pfad angegeben.")
+            
         self.bild_hoehe, self.bild_breite = self.original_bild.shape[:2]
-        
         self.graustufen_bild = cv2.cvtColor(self.original_bild, cv2.COLOR_BGR2GRAY)
-        self.vorverarbeitetes_bild = self._preprocess_image(self.graustufen_bild)
+        
+        # Vorverarbeitung
+        denoised = cv2.bilateralFilter(self.graustufen_bild, d=5, sigmaColor=50, sigmaSpace=50)
+        clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+        self.vorverarbeitetes_bild = clahe.apply(denoised)
         
         self._berechne_globale_koerper_statistiken()
         self._bereite_symmetrie_analyse_vor()
@@ -182,32 +148,12 @@ class ThermalAnalyzer:
         self.gefundene_entzuendungen: List[Entzuendung] = []
         self.alle_kandidaten: List[Entzuendung] = []
 
-    def _setup_logger(self):
-        self.logger = logging.getLogger(f"ThermalAnalyzer_{self.security.session_id}")
-        self.logger.setLevel(logging.INFO)
-        if not self.logger.handlers:
-            ch = logging.StreamHandler()
-            ch.setFormatter(logging.Formatter('%(asctime)s | RAM-SECURE | %(message)s'))
-            self.logger.addHandler(ch)
-
     def _lade_bild_aus_bytes(self, bild_bytes: bytes) -> np.ndarray:
-        if not self.security.verify_integrity():
-            raise RuntimeError("Security Context abgelaufen. Abbruch zum Datenschutz.")
-        try:
-            array = np.frombuffer(bild_bytes, dtype=np.uint8)
-            bild = cv2.imdecode(array, cv2.IMREAD_COLOR)
-            if bild is None: 
-                raise ValueError("Matrix Dimensionen korrupt. Kein valides Bild.")
-            return bild
-        except Exception as e:
-            self.logger.error(f"Fehler bei RAM-Bild-Dekodierung: {e}")
-            raise ValueError("Konnte verschlüsseltes Bild nicht im RAM dekodieren.")
-
-    def _preprocess_image(self, gray_image: np.ndarray) -> np.ndarray:
-        self.analyse_protokoll.append("🔬 Wende kanten-erhaltendes Denoising (Bilateral) und CLAHE an...")
-        denoised = cv2.bilateralFilter(gray_image, d=5, sigmaColor=50, sigmaSpace=50)
-        clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
-        return clahe.apply(denoised)
+        if not self.security.verify_integrity(): raise RuntimeError("Security Context abgelaufen.")
+        array = np.frombuffer(bild_bytes, dtype=np.uint8)
+        bild = cv2.imdecode(array, cv2.IMREAD_COLOR)
+        if bild is None: raise ValueError("Matrix Dimensionen korrupt.")
+        return bild
 
     def _pixel_zu_celsius(self, pixel_wert: float) -> float:
         prozent = max(0.0, min(1.0, pixel_wert / 255.0))
@@ -219,22 +165,18 @@ class ThermalAnalyzer:
         
         if len(koerper_pixel) > 0:
             self.global_mean_temp_raw = float(np.mean(koerper_pixel))
-            self.global_std_temp_raw = float(np.std(koerper_pixel))
-            sorted_pixels = np.sort(koerper_pixel)
-            top_5_percent_idx = int(len(sorted_pixels) * 0.95)
-            self.global_hot_threshold = float(sorted_pixels[top_5_percent_idx])
-            skew, kurt = MathUtils.calculate_higher_order_stats(koerper_pixel)
         else:
             self.global_mean_temp_raw = 128.0
-            self.global_std_temp_raw = 30.0
-            self.global_hot_threshold = 200.0
             
         temp_c = self._pixel_zu_celsius(self.global_mean_temp_raw)
         self.analyse_protokoll.append(f"🔍 Physiologische Baseline ermittelt (Ø {temp_c:.1f}°C).")
 
     def _bereite_symmetrie_analyse_vor(self):
-        if not self.messpunkte: return
-        
+        if not self.messpunkte: 
+            self.asymmetrie_faktor = 0
+            self.heissere_seite = "none"
+            return
+            
         alle_x = [mp['punkt'][0] for mp in self.messpunkte]
         bild_mitte_x = sum(alle_x) / len(alle_x) if alle_x else self.bild_breite / 2
         
@@ -243,11 +185,9 @@ class ThermalAnalyzer:
         
         for mp in self.messpunkte:
             mX, mY = mp['punkt']
-            
             maske = np.zeros(self.vorverarbeitetes_bild.shape, dtype="uint8")
             cv2.circle(maske, (mX, mY), self.config.suchradius_pixel, 255, -1)
             lokal = cv2.bitwise_and(self.vorverarbeitetes_bild, self.vorverarbeitetes_bild, mask=maske)
-            
             _, max_val, _, _ = cv2.minMaxLoc(lokal, mask=maske)
             
             if mX < bild_mitte_x:
@@ -257,34 +197,26 @@ class ThermalAnalyzer:
                 temp_sum_rechts += max_val
                 count_rechts += 1
                 
-        self.mean_temp_links = temp_sum_links / count_links if count_links > 0 else 0
-        self.mean_temp_rechts = temp_sum_rechts / count_rechts if count_rechts > 0 else 0
-        self.asymmetrie_faktor = abs(self.mean_temp_links - self.mean_temp_rechts)
-        self.heissere_seite = "links" if self.mean_temp_links > self.mean_temp_rechts else "rechts"
-        
-        if self.asymmetrie_faktor > 15:
-            self.analyse_protokoll.append(f"⚖️ Systemische Asymmetrie: Die {self.heissere_seite} Seite ist signifikant wärmer. Score-Penalty wird aktiviert.")
+        mean_links = temp_sum_links / count_links if count_links > 0 else 0
+        mean_rechts = temp_sum_rechts / count_rechts if count_rechts > 0 else 0
+        self.asymmetrie_faktor = abs(mean_links - mean_rechts)
+        self.heissere_seite = "links" if mean_links > mean_rechts else "rechts"
 
     def _berechne_statistiken(self, maske: np.ndarray) -> Tuple[TemperatureStats, TemperatureStats]:
         pixel_werte = self.vorverarbeitetes_bild[maske == 255]
-        if len(pixel_werte) == 0: 
-            return TemperatureStats(), TemperatureStats()
-            
-        skew, kurt = MathUtils.calculate_higher_order_stats(pixel_werte)
+        if len(pixel_werte) == 0: return TemperatureStats(), TemperatureStats()
             
         raw = TemperatureStats(
             min_val=float(np.min(pixel_werte)), max_val=float(np.max(pixel_werte)), 
             mean_val=float(np.mean(pixel_werte)), median_val=float(np.median(pixel_werte)), 
-            std_dev=float(np.std(pixel_werte)), variance=float(np.var(pixel_werte)),
-            skewness=skew, kurtosis=kurt
+            std_dev=float(np.std(pixel_werte))
         )
         
         celsius_werte = np.array([self._pixel_zu_celsius(p) for p in pixel_werte])
         celsius = TemperatureStats(
             min_val=float(np.min(celsius_werte)), max_val=float(np.max(celsius_werte)), 
             mean_val=float(np.mean(celsius_werte)), median_val=float(np.median(celsius_werte)), 
-            std_dev=float(np.std(celsius_werte)), variance=float(np.var(celsius_werte)),
-            skewness=0.0, kurtosis=0.0
+            std_dev=float(np.std(celsius_werte))
         )
         return raw, celsius
 
@@ -292,32 +224,21 @@ class ThermalAnalyzer:
         flaeche = cv2.contourArea(kontur)
         umfang = cv2.arcLength(kontur, True)
         zirkularitaet = (4 * math.pi * flaeche) / (umfang * umfang) if umfang > 0 else 0.0
-        x, y, w, h = cv2.boundingRect(kontur)
-        hull = cv2.convexHull(kontur)
-        hull_flaeche = cv2.contourArea(hull)
-        solidity = float(flaeche) / hull_flaeche if hull_flaeche > 0 else 0.0
-        equivalent_diameter = np.sqrt(4 * flaeche / np.pi)
-        hu_moments = MathUtils.extract_hu_moments(kontur) if self.config.calculate_hu_moments else []
-        
-        return MorphologyFeatures(
-            flaeche=flaeche, umfang=umfang, zirkularitaet=zirkularitaet, 
-            aspect_ratio=float(w)/h if h>0 else 0.0, solidity=solidity,
-            equivalent_diameter=equivalent_diameter, hu_moments=hu_moments
-        )
+        return MorphologyFeatures(flaeche=flaeche, umfang=umfang, zirkularitaet=zirkularitaet)
 
     def _bewerte_kandidat(self, seg_name: str, peak_raw: float, lokal_mean: float, morph: MorphologyFeatures, is_linke_seite: bool) -> HeuristicScore:
-        baseline = max(150.0, self.global_mean_temp_raw)
+        baseline = max(130.0, self.global_mean_temp_raw)
         abs_score = 0.0 if peak_raw <= baseline else min(100.0, ((peak_raw - baseline) / (255.0 - baseline)) * 100.0)
         
         delta = peak_raw - lokal_mean
-        kontrast_score = min(100.0, max(0.0, (delta / 50.0) * 100.0))
+        kontrast_score = min(100.0, max(0.0, (delta / 40.0) * 100.0))
         
         asym_score = 100.0
         if self.asymmetrie_faktor > 15.0: 
             if (is_linke_seite and self.heissere_seite == "rechts") or (not is_linke_seite and self.heissere_seite == "links"):
-                asym_score = 25.0 
+                asym_score = 40.0 
                 
-        form_score = 0.0 if morph.zirkularitaet < 0.15 else min(100.0, morph.zirkularitaet * 100.0)
+        form_score = 0.0 if morph.zirkularitaet < 0.1 else min(100.0, morph.zirkularitaet * 100.0)
         
         total = (
             (abs_score * self.config.score_gewicht_absolut) + 
@@ -329,27 +250,21 @@ class ThermalAnalyzer:
         
         severity = SeverityLevel.NORMAL
         if is_valid:
-            if total >= 95.0: severity = SeverityLevel.CRITICAL
-            elif total >= 90.0: severity = SeverityLevel.SEVERE
-            elif total >= 85.0: severity = SeverityLevel.MODERATE
+            if total >= 92.0: severity = SeverityLevel.CRITICAL
+            elif total >= 85.0: severity = SeverityLevel.SEVERE
+            elif total >= 78.0: severity = SeverityLevel.MODERATE
             else: severity = SeverityLevel.MILD
         
         if is_valid:
-            self.analyse_protokoll.append(f"🟥 {seg_name}: Akuter Befund verifiziert! Konfidenz: {total:.1f}% (Severity: {severity.name}).")
+            self.analyse_protokoll.append(f"🟥 {seg_name}: Akuter Befund! Konfidenz: {total:.1f}% ({severity.name}).")
         else:
-            self.analyse_protokoll.append(f"🟩 {seg_name}: Befund negativ. Konfidenz {total:.1f}% unter Cutoff.")
+            self.analyse_protokoll.append(f"🟩 {seg_name}: Unauffällig. Konfidenz {total:.1f}%.")
             
-        return HeuristicScore(
-            absolut_score=abs_score, kontrast_score=kontrast_score, asymmetrie_score=asym_score, 
-            form_score=form_score, total_confidence=total, is_valid=is_valid, severity=severity
-        )
+        return HeuristicScore(absolut_score=abs_score, kontrast_score=kontrast_score, asymmetrie_score=asym_score, form_score=form_score, total_confidence=total, is_valid=is_valid, severity=severity)
 
     def analysiere(self) -> List[Entzuendung]:
-        if not self.security.verify_integrity():
-            raise RuntimeError("Speicherschutzverletzung detektiert. Abbruch.")
-            
         self.alle_kandidaten = []
-        self.analyse_protokoll.append(f"🚀 Initialisiere hierarchische Multilevel-Segmentierung...")
+        self.analyse_protokoll.append(f"🚀 Initialisiere Segmentierung mit Radius {self.config.suchradius_pixel}px...")
         
         for mp in self.messpunkte:
             mX, mY = mp['punkt']
@@ -362,21 +277,21 @@ class ThermalAnalyzer:
             _, max_val, _, max_loc = cv2.minMaxLoc(lokaler_bereich, mask=lokale_maske)
             lokal_mean = cv2.mean(self.vorverarbeitetes_bild, mask=lokale_maske)[0]
             
-            lokaler_schwelle = max(self.global_mean_temp_raw + 10, int(max_val) - 45)
+            lokaler_schwelle = max(self.global_mean_temp_raw + 5, int(max_val) - 35)
             
             schwellen = {
-                'core': max(lokaler_schwelle + 25, int(max_val) - 10),
-                'mid': max(lokaler_schwelle + 15, int(max_val) - 25),
+                'core': max(lokaler_schwelle + 20, int(max_val) - 10),
+                'mid': max(lokaler_schwelle + 10, int(max_val) - 20),
                 'outer': lokaler_schwelle                              
             }
             
             konturen_dict = {}
             haupt_kontur = None
-            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
             
             for ebene, schwelle in schwellen.items():
                 _, thresh = cv2.threshold(lokaler_bereich, schwelle, 255, cv2.THRESH_BINARY)
-                thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
+                thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=1)
                 konturen, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 
                 if konturen:
@@ -384,8 +299,7 @@ class ThermalAnalyzer:
                     if gueltige:
                         groesste = max(gueltige, key=cv2.contourArea)
                         konturen_dict[ebene] = groesste
-                        if ebene == 'outer': 
-                            haupt_kontur = groesste
+                        if ebene == 'outer': haupt_kontur = groesste
                             
             if haupt_kontur is None:
                 for ebene in ['outer', 'mid', 'core']:
@@ -413,37 +327,31 @@ class ThermalAnalyzer:
                         stats_celsius=celsius_stats, morphology=morph, score=score, 
                         konturen_ebenen=konturen_dict, bounding_box=(x, y, w, h)
                     ))
-            else:
-                self.analyse_protokoll.append(f"🟩 {mp['name']}: Topologische Analyse unauffällig. Keine Hitze-Kohäsion.")
                     
+        # NMS Filter
+        self.gefundene_entzuendungen = []
         if self.alle_kandidaten:
             self.alle_kandidaten.sort(key=lambda x: x.score.total_confidence, reverse=True)
-            gefiltert = []
             for kand in self.alle_kandidaten:
                 is_duplicate = False
-                for etabliert in gefiltert:
+                for etabliert in self.gefundene_entzuendungen:
                     dist = math.hypot(kand.zentrum[0] - etabliert.zentrum[0], kand.zentrum[1] - etabliert.zentrum[1])
                     if dist < self.config.nms_overlap_distanz:
                         is_duplicate = True
-                        self.analyse_protokoll.append(f"🗑️ NMS-Filter: {kand.gelenk_name} verworfen. Redundante Hitzesignatur zu {etabliert.gelenk_name}.")
                         break
                 if not is_duplicate:
-                    gefiltert.append(kand)
-            self.gefundene_entzuendungen = gefiltert
-        else:
-            self.gefundene_entzuendungen = []
-            
-        self.analyse_protokoll.append(f"🏁 Analysezyklus terminiert. {len(self.gefundene_entzuendungen)} pathologische Befunde gesichert.")
+                    self.gefundene_entzuendungen.append(kand)
+                    
+        self.analyse_protokoll.append(f"🏁 Analysezyklus beendet. {len(self.gefundene_entzuendungen)} pathologische Befunde gesichert.")
         return self.gefundene_entzuendungen
 
-    def render_base64(self) -> str:
+    def render_image_to_file(self, pfad: str):
+        """Erzeugt das Overlay-Bild für die lokale GUI und speichert es auf die Festplatte."""
         ausgabe = self.original_bild.copy()
         
-        # 1. Overlay: Automatisch gefundene Zehen markieren
         for mp in self.messpunkte:
             cv2.drawMarker(ausgabe, mp['punkt'], (255, 255, 255), cv2.MARKER_CROSS, 10, 1)
 
-        # 2. Overlay: Pathologische Topologie
         for entz in self.gefundene_entzuendungen:
             x, y, w, h = entz.bounding_box
             color_severity = entz.get_severity_color()
@@ -480,8 +388,4 @@ class ThermalAnalyzer:
             cv2.putText(ausgabe, label_temp, (text_x, text_y_base + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1, cv2.LINE_AA)
             cv2.putText(ausgabe, label_conf, (text_x, text_y_base + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.4, color_severity, 1, cv2.LINE_AA)
                         
-        erfolg, buffer = cv2.imencode('.png', ausgabe)
-        if erfolg:
-            return base64.b64encode(buffer).decode("utf-8")
-        else:
-            raise IOError("Kritischer Fehler bei der In-Memory Bild-Kompression.")
+        cv2.imwrite(pfad, ausgabe)
