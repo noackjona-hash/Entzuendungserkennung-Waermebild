@@ -4,15 +4,15 @@ from typing import List, Dict, Any
 
 class FootFinder:
     """
-    Kapselt die vollautomatische Erkennung der Zehen (Anatomical Anchor V19).
-    Nutzt 'Radial Sector Slicing' für perfekte Spitzen-Detektion bei schrägen Füßen.
+    Kapselt die vollautomatische Erkennung der Zehen (Anatomical Anchor V20).
+    Nutzt 'Detrended Baseline Slicing', um die Fußschräge mathematisch zu neutralisieren.
     """
 
     @staticmethod
     def find_toes(image: np.ndarray) -> List[Dict[str, Any]]:
         img_h, img_w = image.shape[:2]
         
-        # 1. Maskierung (Zuverlässig für FLIR Ironbow)
+        # 1. Maskierung (Perfekt für FLIR Ironbow)
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
         _, thresh = cv2.threshold(blurred, 30, 255, cv2.THRESH_BINARY)
@@ -30,7 +30,6 @@ class FootFinder:
         if not contours: 
             return detected_points
             
-        # Toleranz auf 0.5% gesenkt, um auch kältere (kleinere) Füße sicher zu erfassen
         valid_contours = [c for c in contours if cv2.contourArea(c) > (img_w * img_h * 0.005)]
         sorted_contours = sorted(valid_contours, key=cv2.contourArea, reverse=True)[:2]
         sorted_contours.sort(key=lambda c: cv2.boundingRect(c)[0]) 
@@ -39,90 +38,93 @@ class FootFinder:
             x, y, w, h = cv2.boundingRect(contour)
             fuss_name = "Linker Fuß" if f_idx == 0 else "Rechter Fuß"
             
-            # 2. Oberkante extrahieren
+            # 2. Oberkante extrahieren (oberste 35%)
             top_limit = y + int(h * 0.35) 
-            oberkante_pts = [pt[0] for pt in contour if pt[0][1] < top_limit]
+            top_pts = [pt[0] for pt in contour if pt[0][1] < top_limit]
             
-            if len(oberkante_pts) < (w * 0.3): 
+            if len(top_pts) < (w * 0.3): 
                 continue
                 
-            # 3. Den Großen Zeh (absoluten Hochpunkt) finden, um die Fußseite abzuschneiden
-            absolute_min_y = min([p[1] for p in oberkante_pts])
-            peak_x_candidates = [p[0] for p in oberkante_pts if p[1] == absolute_min_y]
+            oberkante = {}
+            for px, py in top_pts:
+                if px not in oberkante or py < oberkante[px]:
+                    oberkante[px] = py
+                    
+            sorted_x = sorted(oberkante.keys())
+            
+            # 3. Ankerpunkt (Großer Zeh = Höchster Punkt im Bild) finden
+            absolute_min_y = min(oberkante.values())
+            peak_x_candidates = [px for px in sorted_x if oberkante[px] == absolute_min_y]
             peak_x = sum(peak_x_candidates) // len(peak_x_candidates)
             center_x = x + w / 2.0
             
-            if peak_x < center_x: # Rechter Fuß (Großer Zeh ist links)
-                start_x = peak_x - int(w * 0.10)
-                end_x = peak_x + int(w * 0.75) 
-            else: # Linker Fuß (Großer Zeh ist rechts)
-                start_x = peak_x - int(w * 0.75) 
-                end_x = peak_x + int(w * 0.10)
-                
-            start_x = max(start_x, min([p[0] for p in oberkante_pts]))
-            end_x = min(end_x, max([p[0] for p in oberkante_pts]))
+            is_right_foot = peak_x < center_x
             
-            # Die saubere Zehen-Reihe
-            toe_pts = [p for p in oberkante_pts if start_x <= p[0] <= end_x]
-            if not toe_pts: 
+            # 4. Zehen-Zone und Detrending-Baseline definieren
+            if is_right_foot:
+                start_x = peak_x - int(w * 0.15)
+                end_x = peak_x + int(w * 0.70) 
+            else:
+                start_x = peak_x - int(w * 0.70) 
+                end_x = peak_x + int(w * 0.15)
+                
+            start_x = max(start_x, sorted_x[0])
+            end_x = min(end_x, sorted_x[-1])
+            
+            toe_zone_x = [px for px in sorted_x if start_x <= px <= end_x]
+            if not toe_zone_x: 
                 continue
                 
-            # 4. Radiales Slicing Zentrum (Der "Pivot-Punkt" im Mittelfuß)
-            cx = (start_x + end_x) / 2.0
-            cy = y + h * 0.45 
+            # Die Baseline verbindet den großen Zeh mit dem Rand der kleinen Zehen
+            p_big = (peak_x, absolute_min_y)
+            p_small = (end_x, oberkante[end_x]) if is_right_foot else (start_x, oberkante[start_x])
             
-            # Umwandlung in Polarkoordinaten
-            polar_pts = []
-            for px, py in toe_pts:
-                dx = px - cx
-                dy = cy - py # Invertiert, Y wächst nach oben
-                if dy > 0:
-                    theta = np.degrees(np.arctan2(dy, dx)) # Winkel
-                    r = np.hypot(dx, dy) # Distanz zum Zentrum
-                    polar_pts.append((theta, r, px, py))
-                    
-            if not polar_pts: 
-                continue
+            # Steigung m der Schräge berechnen
+            if p_small[0] != p_big[0]:
+                m = (p_small[1] - p_big[1]) / (p_small[0] - p_big[0])
+            else:
+                m = 0
                 
-            polar_pts.sort(key=lambda item: item[0])
-            min_theta = polar_pts[0][0]
-            max_theta = polar_pts[-1][0]
-            
-            # 5. In 5 fächerförmige Winkelsektoren unterteilen
-            theta_range = max_theta - min_theta
-            sector_size = theta_range / 5.0
+            # Höhe über der Baseline berechnen (Neutralisierung der Schräge)
+            detrended_heights = {}
+            for px in toe_zone_x:
+                py = oberkante[px]
+                # Y-Wert auf der geraden Baseline an der Stelle X
+                baseline_y = m * (px - p_big[0]) + p_big[1]
+                # Wie weit sticht die Kontur nach oben heraus? (>0 = Zeh)
+                detrended_heights[px] = baseline_y - py  
+                
+            # 5. In 5 Segmente schneiden und wahre Spitzen finden
+            span_width = toe_zone_x[-1] - toe_zone_x[0]
+            segment_width = span_width / 5.0
             foot_points = []
             
             for i in range(5):
-                sec_min = min_theta + i * sector_size
-                sec_max = min_theta + (i + 1) * sector_size
+                seg_start = toe_zone_x[0] + i * segment_width
+                seg_end = toe_zone_x[0] + (i + 1) * segment_width
                 
-                sec_pts = [p for p in polar_pts if sec_min <= p[0] <= sec_max]
+                seg_px = [px for px in toe_zone_x if seg_start <= px <= seg_end]
                 
-                if sec_pts:
-                    # MAXIMALER RADIUS (r): Findet die physisch abstehende Zehenspitze!
-                    best_pt = max(sec_pts, key=lambda p: p[1])
+                if seg_px:
+                    # Der Zeh ist der Punkt, der am weitesten ÜBER die Baseline hinausragt!
+                    best_px = max(seg_px, key=lambda px: detrended_heights[px])
+                    best_py = oberkante[best_px]
                     
-                    # Punkt um ~4% der Fußhöhe nach unten in das Gelenk verschieben
+                    # Punkt um ~4% der Fußhöhe nach unten ins Gelenk schieben
                     offset_y = max(5, int(h * 0.04))
-                    foot_points.append({"px": best_pt[2], "py": best_pt[3] + offset_y})
+                    foot_points.append({"x": best_px, "y": best_py + offset_y})
                 else:
-                    # Fallback Interpolation, falls ein Sektor komplett leer ist
-                    fallback_theta = sec_min + sector_size / 2
-                    fallback_px = int(cx + np.cos(np.radians(fallback_theta)) * (h * 0.2))
-                    fallback_py = int(cy - np.sin(np.radians(fallback_theta)) * (h * 0.2))
-                    foot_points.append({"px": fallback_px, "py": fallback_py})
+                    # Fallback
+                    fallback_x = int(seg_start + segment_width / 2)
+                    fallback_y = int(m * (fallback_x - p_big[0]) + p_big[1])
+                    foot_points.append({"x": fallback_x, "y": fallback_y})
                     
-            # 6. Anatomisch korrekte Benennung (Sektoren laufen von Rechts nach Links)
+            # 6. Anatomisch korrekte Benennung
             for i, pt in enumerate(foot_points):
-                if peak_x < center_x:
-                    zeh_nr = 5 - i # Rechter Fuß: Großer Zeh (1) ist links (Index 4)
-                else:
-                    zeh_nr = i + 1 # Linker Fuß: Großer Zeh (1) ist rechts (Index 0)
-                    
+                zeh_nr = i + 1 if is_right_foot else 5 - i
                 detected_points.append({
                     "name": f"{fuss_name} - Zeh {zeh_nr}",
-                    "punkt": (int(pt['px']), int(pt['py']))
+                    "punkt": (int(pt['x']), int(pt['y']))
                 })
                 
         return detected_points
