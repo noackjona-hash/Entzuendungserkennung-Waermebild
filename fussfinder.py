@@ -1,114 +1,114 @@
 import cv2
 import numpy as np
-from typing import List, Dict, Tuple, Any
+from typing import List, Dict, Any
 
 class FootFinder:
     """
-    Kapselt die vollautomatische Erkennung der Zehen (Anatomical Anchor V13).
-    Optimiert für den In-Memory Einsatz auf Servern (ohne GUI/Tkinter).
+    Kapselt die vollautomatische Erkennung der Zehen (Anatomical Anchor V14).
+    Nutzt geometrische Profil-Analyse anstelle von reinen Farbkanälen.
     """
 
     @staticmethod
     def find_toes(image: np.ndarray) -> List[Dict[str, Any]]:
         """
-        Analysiert das Wärmebild und gibt eine Liste der erkannten Zehen zurück.
-        Rückgabeformat: [{"name": "Rechter Fuß - Zeh 1", "punkt": (x, y)}, ...]
+        Analysiert das Wärmebild geometrisch und findet die anatomischen Ankerpunkte (Gelenke).
         """
-        # V11: Roter Kanal Trick für perfekte Trennung vom Hintergrund
-        _, _, r_channel = cv2.split(image)
-        blurred_r = cv2.GaussianBlur(r_channel, (11, 11), 0)
-        otsu_val, _ = cv2.threshold(blurred_r, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        final_thresh = int(otsu_val * 0.8) # 80% für kalte Zehen
-        _, thresh = cv2.threshold(blurred_r, final_thresh, 255, cv2.THRESH_BINARY)
+        # 1. Konvertierung in Graustufen (besser für unterschiedliche Color-Maps)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        
+        # 2. Otsu-Thresholding um den Fuß sauber vom dunklen Hintergrund zu trennen
+        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-        kernel = np.ones((9, 9), np.uint8)
-        thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
-        thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+        # 3. Morphologische Operationen um Rauschen zu entfernen und Lücken zu schließen
+        kernel_small = np.ones((5, 5), np.uint8)
+        kernel_large = np.ones((15, 15), np.uint8)
+        thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel_small)
+        thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel_large)
         
         contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
         detected_points = []
         
         if not contours:
             return detected_points
             
-        sorted_contours = sorted(contours, key=cv2.contourArea, reverse=True)
+        # Finde die zwei größten Konturen (Die beiden Füße)
+        sorted_contours = sorted(contours, key=cv2.contourArea, reverse=True)[:2]
         
-        for contour in sorted_contours[:2]:
-            if cv2.contourArea(contour) > 8000:
-                x, y, w, h = cv2.boundingRect(contour)
-                toe_zone_limit = y + int(h * 0.35) # Großzügige Zone oben
-                top_points = [p[0] for p in contour if p[0][1] < toe_zone_limit]
+        # Sortiere Füße von Links nach Rechts im Bild
+        sorted_contours.sort(key=lambda c: cv2.boundingRect(c)[0])
+        
+        for f_idx, contour in enumerate(sorted_contours):
+            if cv2.contourArea(contour) < 5000: # Rauschen ignorieren
+                continue
                 
-                if len(top_points) > 20:
-                    top_boundary_map = {}
-                    for px, py in top_points:
-                        if px not in top_boundary_map or py < top_boundary_map[px]:
-                            top_boundary_map[px] = py
-                    
-                    sorted_x = sorted(top_boundary_map.keys())
-                    boundary_y = [top_boundary_map[x] for x in sorted_x]
-                    
-                    window_size = 11 
-                    conv_kernel = np.ones(window_size) / window_size
-                    smoothed_y = np.convolve(boundary_y, conv_kernel, mode='same')
-                    
-                    # --- V13: ANATOMICAL ANCHORING ---
-                    best_idx = np.argmin(smoothed_y)
-                    anchor_x = sorted_x[best_idx]
-                    
-                    M = cv2.moments(contour)
-                    if M["m00"] != 0:
-                        center_x = int(M["m10"] / M["m00"])
-                    else:
-                        center_x = x + (w / 2)
+            x, y, w, h = cv2.boundingRect(contour)
+            fuss_name = "Linker Fuß" if f_idx == 0 else "Rechter Fuß"
+            
+            # Nur das obere Drittel des Fußes betrachten (dort wo die Zehen/Gelenke sind)
+            top_limit = y + int(h * 0.40) 
+            
+            # Profil der Oberkante erstellen: Höchster Punkt (minimales Y) für jedes X
+            oberkante = {}
+            for pt in contour:
+                px, py = pt[0]
+                if py < top_limit:
+                    if px not in oberkante or py < oberkante[px]:
+                        oberkante[px] = py
                         
-                    span = h * 0.45 
+            if len(oberkante) < 15:
+                continue
+                
+            # X-Koordinaten sortieren für ein fortlaufendes Profil
+            sorted_x = sorted(oberkante.keys())
+            raw_y = [oberkante[px] for px in sorted_x]
+            
+            # Profil mathematisch glätten (Moving Average Filter), um kleine Zacken zu ignorieren
+            window_size = 15
+            if len(raw_y) < window_size:
+                continue
+                
+            kernel = np.ones(window_size) / window_size
+            smoothed_y = np.convolve(raw_y, kernel, mode='valid')
+            valid_x = sorted_x[window_size//2 : -window_size//2 + 1]
+            
+            peaks = []
+            # Lokale Minima im Profil finden (Y-Achse wächst nach unten, Minima = Zehenspitzen)
+            for i in range(3, len(smoothed_y) - 3):
+                # Prüfen ob Punkt höher liegt als seine Nachbarn
+                if (smoothed_y[i] < smoothed_y[i-1] and smoothed_y[i] < smoothed_y[i-2] and 
+                    smoothed_y[i] < smoothed_y[i+1] and smoothed_y[i] < smoothed_y[i+2]):
                     
-                    if anchor_x < center_x:
-                        # Rechter Fuß
-                        start_x = anchor_x - (span * 0.15)
-                        end_x = anchor_x + span
-                        fuss_name = "Rechter Fuß"
-                    else:
-                        # Linker Fuß
-                        start_x = anchor_x - span
-                        end_x = anchor_x + (span * 0.15)
-                        fuss_name = "Linker Fuß"
-                        
-                    start_x = max(start_x, sorted_x[0])
-                    end_x = min(end_x, sorted_x[-1])
+                    # Prominenz prüfen (Wie tief gehen die Täler daneben?)
+                    val_left = max(smoothed_y[max(0, i-15):i]) if i > 0 else smoothed_y[i]
+                    val_right = max(smoothed_y[i+1:min(len(smoothed_y), i+16)]) if i < len(smoothed_y)-1 else smoothed_y[i]
                     
-                    toe_x = []
-                    toe_y = []
-                    orig_toe_y = []
-                    for i, sx in enumerate(sorted_x):
-                        if start_x <= sx <= end_x:
-                            toe_x.append(sx)
-                            toe_y.append(smoothed_y[i])
-                            orig_toe_y.append(boundary_y[i])
-                            
-                    if len(toe_x) > 10:
-                        zone_width = toe_x[-1] - toe_x[0]
-                        segment_width = zone_width / 5.0
+                    prominenz = max(val_left - smoothed_y[i], val_right - smoothed_y[i])
+                    
+                    # Wenn es ein deutlicher Zeh ist
+                    if prominenz > 2.0:  
+                        px = valid_x[i]
+                        py = oberkante[px]
                         
-                        toe_count = 1
-                        for i in range(5):
-                            seg_min_x = toe_x[0] + i * segment_width
-                            seg_max_x = toe_x[0] + (i + 1) * segment_width
-                            
-                            segment_indices = [idx for idx, sx in enumerate(toe_x) if seg_min_x <= sx <= seg_max_x]
-                            valid_indices = [idx for idx in segment_indices if 2 < idx < len(toe_y)-2]
-                            
-                            if valid_indices:
-                                local_best_idx = min(valid_indices, key=lambda idx: toe_y[idx])
-                                final_px = toe_x[local_best_idx]
-                                final_py = orig_toe_y[local_best_idx]
-                                
-                                detected_points.append({
-                                    "name": f"{fuss_name} - Zeh {toe_count}",
-                                    "punkt": (int(final_px), int(final_py))
-                                })
-                                toe_count += 1
-                                
+                        # V14 Feature: Nicht die Zehenspitze markieren, sondern das Gelenk darunter!
+                        # Wir wandern ~15 Pixel nach unten in die Mitte des Zehs/Gelenks
+                        peaks.append((px, py + 15)) 
+
+            # Zu nah beieinander liegende Peaks herausfiltern (Non-Maximum Suppression)
+            filtered_peaks = []
+            for p in peaks:
+                too_close = False
+                for fp in filtered_peaks:
+                    if abs(p[0] - fp[0]) < 18: # Mindestabstand in X
+                        too_close = True
+                        break
+                if not too_close:
+                    filtered_peaks.append(p)
+                    
+            # Die gefundenen Zehen von Links nach Rechts benennen (Maximal 5)
+            for i, (px, py) in enumerate(filtered_peaks[:5]):
+                detected_points.append({
+                    "name": f"{fuss_name} - Zeh {i+1}",
+                    "punkt": (int(px), int(py))
+                })
+                
         return detected_points

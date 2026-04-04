@@ -1,165 +1,114 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Request
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security.api_key import APIKeyHeader
-from cryptography.fernet import Fernet
-import uvicorn
 import cv2
 import numpy as np
-import base64
-import time
-import hashlib
-from typing import Dict, Tuple
+from typing import List, Dict, Any
 
-from berechnung import ThermalAnalyzer
-from fussfinder import FootFinder
-
-# =====================================================================
-# ENTERPRISE SECURITY CONFIGURATION (DSGVO / HIPAA COMPLIANCE)
-# =====================================================================
-
-API_KEY = "jf2026-jona-super-secret-key-9988"
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
-
-async def verify_api_key(api_key: str = Depends(api_key_header)):
-    if not api_key or api_key != API_KEY:
-        raise HTTPException(status_code=403, detail="Zugriff verweigert. Ungültiger oder fehlender API-Key.")
-    return api_key
-
-VOLATILE_SECRET_KEY = Fernet.generate_key()
-cipher_suite = Fernet(VOLATILE_SECRET_KEY)
-
-RATE_LIMIT_REQUESTS = 10
-RATE_LIMIT_WINDOW_SEC = 60
-ip_request_counts: Dict[str, Tuple[int, float]] = {}
-
-def check_rate_limit(request: Request):
-    client_ip = request.client.host if request.client else "unknown"
-    current_time = time.time()
-    
-    if client_ip in ip_request_counts:
-        count, start_time = ip_request_counts[client_ip]
-        if current_time - start_time < RATE_LIMIT_WINDOW_SEC:
-            if count >= RATE_LIMIT_REQUESTS:
-                raise HTTPException(status_code=429, detail="Rate Limit überschritten. Bitte warten.")
-            ip_request_counts[client_ip] = (count + 1, start_time)
-        else:
-            ip_request_counts[client_ip] = (1, current_time)
-    else:
-        ip_request_counts[client_ip] = (1, current_time)
-
-# =====================================================================
-# FASTAPI INITIALISIERUNG
-# =====================================================================
-
-app = FastAPI(
-    title="Jugend Forscht 2026 - Thermografie Med-API",
-    description="Hochsichere, verschlüsselte In-Memory API zur Erkennung von Entzündungen.",
-    version="4.0-Enterprise-Autofocus"
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"], 
-    allow_credentials=True,
-    allow_methods=["POST"], 
-    allow_headers=["X-API-Key", "Content-Type"],
-)
-
-@app.middleware("http")
-async def add_security_headers(request: Request, call_next):
-    response = await call_next(request)
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    return response
-
-# =====================================================================
-# HAUPT-ENDPUNKT DER API
-# =====================================================================
-
-@app.post("/analyze", summary="Vollautomatische In-Memory Wärmebild-Analyse")
-async def analyze_thermal_image(
-    request: Request,
-    file: UploadFile = File(...),
-    api_key: str = Depends(verify_api_key) 
-):
+class FootFinder:
     """
-    Nimmt das Bild entgegen, verschlüsselt es sofort im RAM.
-    Findet vollautomatisch die Zehen (Anatomical Anchor) und sucht nach Entzündungen.
+    Kapselt die vollautomatische Erkennung der Zehen (Anatomical Anchor V14).
+    Nutzt geometrische Profil-Analyse anstelle von reinen Farbkanälen.
     """
-    check_rate_limit(request)
-        
-    try:
-        raw_bytes = await file.read()
-        file_hash = hashlib.sha256(raw_bytes).hexdigest()[:12]
-        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] REQUEST SECURED. File-Hash: {file_hash}")
-        
-        # Bild im RAM verschlüsseln
-        encrypted_bytes = cipher_suite.encrypt(raw_bytes)
-        del raw_bytes 
-        
-        # ============================================================
-        # BERECHNUNGS-PIPELINE (CRITICAL SECTION)
-        # ============================================================
-        decrypted_bytes_for_analysis = cipher_suite.decrypt(encrypted_bytes)
-        
-        # 1. Bild dekodieren für den Fussfinder
-        array = np.frombuffer(decrypted_bytes_for_analysis, dtype=np.uint8)
-        bild_cv = cv2.imdecode(array, cv2.IMREAD_COLOR)
-        
-        if bild_cv is None:
-            raise ValueError("Konnte Bild nicht lesen.")
 
-        # 2. Vollautomatische Zehen-Detektion (Anatomical Anchor V13)
-        auto_messpunkte = FootFinder.find_toes(bild_cv)
+    @staticmethod
+    def find_toes(image: np.ndarray) -> List[Dict[str, Any]]:
+        """
+        Analysiert das Wärmebild geometrisch und findet die anatomischen Ankerpunkte (Gelenke).
+        """
+        # 1. Konvertierung in Graustufen (besser für unterschiedliche Color-Maps)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         
-        # 3. Entzündungsanalyse an den gefundenen Punkten
-        analyzer = ThermalAnalyzer(bild_bytes=decrypted_bytes_for_analysis, messpunkte=auto_messpunkte)
-        
-        if len(auto_messpunkte) > 0:
-            analyzer.analyse_protokoll.insert(0, f"👣 Anatomical Anchor: {len(auto_messpunkte)} Zehen vollautomatisch detektiert und anvisiert.")
-        else:
-            analyzer.analyse_protokoll.insert(0, f"⚠️ Anatomical Anchor: Keine klaren Fuß/Zeh-Strukturen erkannt. Analyse fällt auf Baseline zurück.")
+        # 2. Otsu-Thresholding um den Fuß sauber vom dunklen Hintergrund zu trennen
+        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-        ergebnisse = analyzer.analysiere() 
-        img_base64 = analyzer.render_base64()
+        # 3. Morphologische Operationen um Rauschen zu entfernen und Lücken zu schließen
+        kernel_small = np.ones((5, 5), np.uint8)
+        kernel_large = np.ones((15, 15), np.uint8)
+        thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel_small)
+        thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel_large)
         
-        del decrypted_bytes_for_analysis
-        del encrypted_bytes
-        del bild_cv
-        del array
-        # ============================================================
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        detected_points = []
         
-        export_daten = []
-        for e in ergebnisse:
-            export_daten.append({
-                "gelenk": e.gelenk_name,
-                "score_percent": round(e.score.total_confidence, 2),
-                "geometrie": e.morphology.to_dict(),
-                "temperatur_celsius": e.stats_celsius.to_dict()
-            })
+        if not contours:
+            return detected_points
+            
+        # Finde die zwei größten Konturen (Die beiden Füße)
+        sorted_contours = sorted(contours, key=cv2.contourArea, reverse=True)[:2]
         
-        return JSONResponse(content={
-            "status": "success",
-            "security_clearance": "Data fully encrypted in transit and at rest (RAM).",
-            "file_hash": file_hash,
-            "gefundene_zehen": len(auto_messpunkte),
-            "gefundene_anomalien": len(ergebnisse),
-            "daten": export_daten,
-            "protokoll": analyzer.analyse_protokoll, 
-            "ergebnis_bild_base64": img_base64 
-        })
+        # Sortiere Füße von Links nach Rechts im Bild
+        sorted_contours.sort(key=lambda c: cv2.boundingRect(c)[0])
         
-    except Exception as e:
-        print(f"[SECURITY ALERT] Fehler bei Analyse: {str(e)}")
-        raise HTTPException(status_code=500, detail="Interner Serverfehler bei der sicheren Bildanalyse.")
+        for f_idx, contour in enumerate(sorted_contours):
+            if cv2.contourArea(contour) < 5000: # Rauschen ignorieren
+                continue
+                
+            x, y, w, h = cv2.boundingRect(contour)
+            fuss_name = "Linker Fuß" if f_idx == 0 else "Rechter Fuß"
+            
+            # Nur das obere Drittel des Fußes betrachten (dort wo die Zehen/Gelenke sind)
+            top_limit = y + int(h * 0.40) 
+            
+            # Profil der Oberkante erstellen: Höchster Punkt (minimales Y) für jedes X
+            oberkante = {}
+            for pt in contour:
+                px, py = pt[0]
+                if py < top_limit:
+                    if px not in oberkante or py < oberkante[px]:
+                        oberkante[px] = py
+                        
+            if len(oberkante) < 15:
+                continue
+                
+            # X-Koordinaten sortieren für ein fortlaufendes Profil
+            sorted_x = sorted(oberkante.keys())
+            raw_y = [oberkante[px] for px in sorted_x]
+            
+            # Profil mathematisch glätten (Moving Average Filter), um kleine Zacken zu ignorieren
+            window_size = 15
+            if len(raw_y) < window_size:
+                continue
+                
+            kernel = np.ones(window_size) / window_size
+            smoothed_y = np.convolve(raw_y, kernel, mode='valid')
+            valid_x = sorted_x[window_size//2 : -window_size//2 + 1]
+            
+            peaks = []
+            # Lokale Minima im Profil finden (Y-Achse wächst nach unten, Minima = Zehenspitzen)
+            for i in range(3, len(smoothed_y) - 3):
+                # Prüfen ob Punkt höher liegt als seine Nachbarn
+                if (smoothed_y[i] < smoothed_y[i-1] and smoothed_y[i] < smoothed_y[i-2] and 
+                    smoothed_y[i] < smoothed_y[i+1] and smoothed_y[i] < smoothed_y[i+2]):
+                    
+                    # Prominenz prüfen (Wie tief gehen die Täler daneben?)
+                    val_left = max(smoothed_y[max(0, i-15):i]) if i > 0 else smoothed_y[i]
+                    val_right = max(smoothed_y[i+1:min(len(smoothed_y), i+16)]) if i < len(smoothed_y)-1 else smoothed_y[i]
+                    
+                    prominenz = max(val_left - smoothed_y[i], val_right - smoothed_y[i])
+                    
+                    # Wenn es ein deutlicher Zeh ist
+                    if prominenz > 2.0:  
+                        px = valid_x[i]
+                        py = oberkante[px]
+                        
+                        # V14 Feature: Nicht die Zehenspitze markieren, sondern das Gelenk darunter!
+                        # Wir wandern ~15 Pixel nach unten in die Mitte des Zehs/Gelenks
+                        peaks.append((px, py + 15)) 
 
-if __name__ == "__main__":
-    print("="*50)
-    print(" STARTING ENTERPRISE MEDICAL API (AUTOFOCUS EDITION)")
-    print(" - In-Memory Encryption: ENABLED")
-    print(" - API-Key Protection:   ENABLED")
-    print(" - Rate Limiting:        ENABLED")
-    print("="*50)
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+            # Zu nah beieinander liegende Peaks herausfiltern (Non-Maximum Suppression)
+            filtered_peaks = []
+            for p in peaks:
+                too_close = False
+                for fp in filtered_peaks:
+                    if abs(p[0] - fp[0]) < 18: # Mindestabstand in X
+                        too_close = True
+                        break
+                if not too_close:
+                    filtered_peaks.append(p)
+                    
+            # Die gefundenen Zehen von Links nach Rechts benennen (Maximal 5)
+            for i, (px, py) in enumerate(filtered_peaks[:5]):
+                detected_points.append({
+                    "name": f"{fuss_name} - Zeh {i+1}",
+                    "punkt": (int(px), int(py))
+                })
+                
+        return detected_points
