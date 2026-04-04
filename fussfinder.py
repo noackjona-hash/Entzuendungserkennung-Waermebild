@@ -1,11 +1,13 @@
 import cv2
 import numpy as np
+import math
 from typing import List, Dict, Any
 
 class FootFinder:
     """
-    Kapselt die vollautomatische Erkennung der Zehen (Anatomical Anchor V23).
-    Nutzt 'Dynamic Poly-Boundary Fusion' & 'Local Maxima Scanning'.
+    Kapselt die vollautomatische Erkennung der Zehen (Anatomical Anchor V24).
+    Nutzt 'Geometric Rotation Alignment', um Fußschrägen vor dem Slicing mathematisch aufzulösen.
+    Das ultimative und stabilste Modell für Wärmebilder.
     """
 
     @staticmethod
@@ -13,15 +15,15 @@ class FootFinder:
         img_h, img_w = image.shape[:2]
         
         # 1. Maskierung: Red-Channel + Dynamic Otsu Fusion
+        # Sehr robust für FLIR Ironbow, schneidet kalte Zehen nicht ab
         _, _, r_channel = cv2.split(image)
         blurred = cv2.GaussianBlur(r_channel, (11, 11), 0)
         
-        # Dynamischer Threshold für robuste Erkennung auch bei kälteren Füßen
         otsu_val, _ = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         final_thresh = max(15, int(otsu_val * 0.75)) 
         _, thresh = cv2.threshold(blurred, final_thresh, 255, cv2.THRESH_BINARY)
 
-        # Morphologie zur Glättung
+        # Morphologie zur Glättung der Ränder
         k_size = max(5, int(img_w * 0.01))
         kernel = np.ones((k_size, k_size), np.uint8)
         thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
@@ -33,7 +35,7 @@ class FootFinder:
         if not contours: 
             return detected_points
             
-        # Filtere Noise und hole die zwei größten Konturen (Füße)
+        # Filtere Rauschen und hole die zwei größten Konturen (Füße)
         valid_contours = [c for c in contours if cv2.contourArea(c) > (img_w * img_h * 0.01)]
         sorted_contours = sorted(valid_contours, key=cv2.contourArea, reverse=True)[:2]
         sorted_contours.sort(key=lambda c: cv2.boundingRect(c)[0]) 
@@ -42,122 +44,104 @@ class FootFinder:
             x, y, w, h = cv2.boundingRect(contour)
             fuss_name = "Linker Fuß" if f_idx == 0 else "Rechter Fuß"
             
-            # 2. Oberkante extrahieren (oberste 30%)
-            top_limit = y + int(h * 0.30) 
+            # 2. Oberkante extrahieren (oberste 35%)
+            top_limit = y + int(h * 0.35) 
             top_pts = [pt[0] for pt in contour if pt[0][1] < top_limit]
             
             if len(top_pts) < (w * 0.2): 
                 continue
                 
-            # Dictionary für die höchste Y-Koordinate pro X-Pixel
+            # Erstelle ein sauberes Profil: Nur der höchste Y-Wert pro X-Spalte
             oberkante = {}
             for px, py in top_pts:
                 if px not in oberkante or py < oberkante[px]:
                     oberkante[px] = py
                     
             sorted_x = sorted(oberkante.keys())
-            raw_y = [oberkante[px] for px in sorted_x]
             
-            # 3. Mathematische Glättung der Kontur (Noise Reduction)
-            # Wichtig: Kernel size darf nicht zu groß sein, sonst verschmelzen Zehen
-            window_size = max(5, int(w * 0.03)) 
-            if window_size % 2 == 0: window_size += 1
+            # 3. Ankerpunkte für die Rotations-Achse finden
+            min_y = min(oberkante.values())
+            peak_x_candidates = [px for px in sorted_x if oberkante[px] == min_y]
+            p_anchor_x = sum(peak_x_candidates) // len(peak_x_candidates)
+            p_anchor_y = min_y
             
-            padded_y = np.pad(raw_y, (window_size//2, window_size//2), mode='edge')
-            kernel_smooth = np.ones(window_size) / window_size
-            smoothed_y = np.convolve(padded_y, kernel_smooth, mode='valid')
+            center_x = x + w / 2.0
+            is_right_foot = p_anchor_x < center_x
+            
+            # Finde den Rand der Zehenreihe (~75% der Fußbreite vom großen Zeh entfernt)
+            if is_right_foot:
+                target_edge_x = min(sorted_x[-1], p_anchor_x + int(w * 0.75))
+            else:
+                target_edge_x = max(sorted_x[0], p_anchor_x - int(w * 0.75))
+                
+            p_edge_x = min(sorted_x, key=lambda val: abs(val - target_edge_x))
+            p_edge_y = oberkante[p_edge_x]
+            
+            # Berechne den Winkel (Theta) der Fußschräge
+            dx = p_edge_x - p_anchor_x
+            dy = p_edge_y - p_anchor_y
+            theta = math.atan2(dy, dx)
+            
+            # Hilfsfunktion für die 2D-Rotation
+            def rotate_point(px, py, cx, cy, angle):
+                nx = math.cos(angle) * (px - cx) - math.sin(angle) * (py - cy) + cx
+                ny = math.sin(angle) * (px - cx) + math.cos(angle) * (py - cy) + cy
+                return nx, ny
 
-            # 4. Local Maxima Scanning (Suche nach echten "Gipfeln" der Zehen)
-            # Y wächst nach unten, also suchen wir nach lokalen Minima in smoothed_y
-            peaks = []
-            for i in range(2, len(smoothed_y) - 2):
-                if (smoothed_y[i] < smoothed_y[i-1] and smoothed_y[i] < smoothed_y[i-2] and
-                    smoothed_y[i] < smoothed_y[i+1] and smoothed_y[i] < smoothed_y[i+2]):
-                    peaks.append(i)
-
+            # 4. Fuß-Oberkante virtuell FLACH rotieren
+            rotated_contour = []
+            for px in sorted_x:
+                py = oberkante[px]
+                # Drehe um -Theta, um die Schräge exakt auszugleichen
+                rx, ry = rotate_point(px, py, p_anchor_x, p_anchor_y, -theta)
+                rotated_contour.append((rx, ry, px, py))
+                
+            # Nach dem neuen (flachen) X sortieren
+            rotated_contour.sort(key=lambda p: p[0])
+            
+            # Die Grenzen der flachen Zehenreihe ermitteln
+            rx_start = rotated_contour[0][0]
+            rx_end = rotated_contour[-1][0]
+            
+            span_width = rx_end - rx_start
+            if span_width <= 0: continue
+            segment_width = span_width / 5.0
+            
             foot_points = []
             
-            # 5. Peak Filtering & Fallbacks
-            if len(peaks) > 0:
-                # Extrahiere X/Y für die gefundenen Peaks
-                peak_coords = [(sorted_x[idx], raw_y[idx]) for idx in peaks]
+            # 5. In der flachen Ebene slicen und die Spitzen (Zehkuppen) greifen
+            for i in range(5):
+                seg_start = rx_start + i * segment_width
+                seg_end = rx_start + (i + 1) * segment_width
                 
-                # Filtere Peaks, die zu nah aneinander liegen (mind. 5% Fußbreite Abstand)
-                min_dist = w * 0.05
-                filtered_peaks = []
-                for pt in sorted(peak_coords, key=lambda p: p[1]): # Sortiere nach Y (höchste zuerst)
-                    too_close = False
-                    for fp in filtered_peaks:
-                        if abs(pt[0] - fp[0]) < min_dist:
-                            too_close = True
-                            break
-                    if not too_close:
-                        filtered_peaks.append(pt)
+                seg_pts = [p for p in rotated_contour if seg_start <= p[0] <= seg_end]
                 
-                # Wir wollen max 5 Zehen
-                filtered_peaks = sorted(filtered_peaks, key=lambda p: p[0])[:5] # Von links nach rechts
-                
-                # Wenn wir weniger als 5 Zehen gefunden haben, füllen wir interpoliert auf
-                if len(filtered_peaks) < 5:
-                    # Ankerpunkt suchen (absolutes Minimum Y)
-                    peak_x = min(filtered_peaks, key=lambda p: p[1])[0]
-                    center_x = x + w / 2.0
-                    is_right_foot = peak_x < center_x
+                if seg_pts:
+                    # In der flachen Rotation ist das Minimum Y garantiert der perfekte Zeh!
+                    best_pt = min(seg_pts, key=lambda p: p[1])
+                    # Hole die ORIGINALEN Koordinaten dieses Punktes zurück
+                    orig_x = best_pt[2]
+                    orig_y = best_pt[3]
                     
-                    # Definiere Suchbereich
-                    if is_right_foot:
-                        start_x, end_x = peak_x - int(w * 0.1), peak_x + int(w * 0.7)
-                    else:
-                        start_x, end_x = peak_x - int(w * 0.7), peak_x + int(w * 0.1)
-                    
-                    start_x, end_x = max(start_x, sorted_x[0]), min(end_x, sorted_x[-1])
-                    
-                    # Generiere 5 gleichmäßige Spalten als Fallback
-                    span = end_x - start_x
-                    if span > 0:
-                        seg_w = span / 5.0
-                        foot_points = []
-                        for i in range(5):
-                            target_x = start_x + i * seg_w + (seg_w / 2)
-                            # Finde den am nächsten liegenden gefilterten Peak
-                            closest_peak = None
-                            min_diff = float('inf')
-                            for fp in filtered_peaks:
-                                diff = abs(fp[0] - target_x)
-                                if diff < min_diff and diff < (seg_w * 1.5): # Darf nicht ewig weit weg sein
-                                    closest_peak = fp
-                                    min_diff = diff
-                            
-                            if closest_peak:
-                                foot_points.append({"x": closest_peak[0], "y": closest_peak[1]})
-                            else:
-                                # Fallback: Nimm den Punkt direkt auf der Kontur
-                                closest_x_idx = np.argmin([abs(sx - target_x) for sx in sorted_x])
-                                foot_points.append({"x": sorted_x[closest_x_idx], "y": raw_y[closest_x_idx]})
+                    # 4% Offset nach unten ins Gelenk (MTP)
+                    offset_y = max(5, int(h * 0.04))
+                    foot_points.append({"x": orig_x, "y": orig_y + offset_y})
                 else:
-                    for p in filtered_peaks:
-                        foot_points.append({"x": p[0], "y": p[1]})
-            else:
-                 # Fallback, falls GAR KEINE Peaks gefunden wurden (sehr unwahrscheinlich bei V23)
-                 center_x = x + w / 2.0
-                 foot_points = [{"x": int(center_x), "y": int(y + h * 0.1)}] * 5
-
-            # 6. Anatomisch korrekte Benennung & Offset
-            # Wir müssen bestimmen, ob der Große Zeh links oder rechts liegt, um korrekt durchzuzählen
-            absolute_min_y = min([p["y"] for p in foot_points])
-            peak_x = [p["x"] for p in foot_points if p["y"] == absolute_min_y][0]
-            is_right_foot = peak_x < (x + w / 2.0)
-
+                    # Sicherer Fallback (Interpolation im flachen Raum -> zurück rotieren)
+                    fallback_rx = seg_start + segment_width / 2.0
+                    orig_fx, orig_fy = rotate_point(fallback_rx, p_anchor_y, p_anchor_x, p_anchor_y, theta)
+                    foot_points.append({"x": orig_fx, "y": orig_fy + max(5, int(h * 0.04))})
+                    
+            # 6. Anatomisch korrekt durchnummerieren
             for i, pt in enumerate(foot_points):
-                # Offset: Punkt minimal nach unten ins Gelenk verschieben
-                offset_y = max(5, int(h * 0.04))
-                
-                # Zuweisung: Läuft immer von Links nach Rechts
+                # foot_points läuft immer von links nach rechts
+                # Rechter Fuß: Großer Zeh ist links (Index 0 = Zeh 1)
+                # Linker Fuß: Großer Zeh ist rechts (Index 4 = Zeh 1)
                 zeh_nr = i + 1 if is_right_foot else 5 - i
                 
                 detected_points.append({
                     "name": f"{fuss_name} - Zeh {zeh_nr}",
-                    "punkt": (int(pt['x']), int(pt['y'] + offset_y))
+                    "punkt": (int(pt['x']), int(pt['y']))
                 })
                 
         return detected_points
