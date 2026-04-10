@@ -1,21 +1,18 @@
 import cv2
 import numpy as np
-import math
-import logging
-import time
 import json
 import os
 import datetime
 from enum import Enum, auto
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Optional
 
 # =============================================================================
-# DEFINITIONEN & ENUMS
+# ENTERPRISE DEFINITIONEN & KLASSIFIZIERUNGEN
 # =============================================================================
 
 class SeverityLevel(Enum):
-    """Klassifizierung der Entzündungsstärke nach medizinischen Parametern."""
+    """Klinische Klassifizierung der thermischen Anomalie."""
     NORMAL = 0
     MILD = 1
     MODERATE = 2
@@ -24,22 +21,16 @@ class SeverityLevel(Enum):
 
 @dataclass
 class ThermalConfig:
-    """Zentrale Konfiguration für die Bildverarbeitung und Heuristik."""
+    """Zentrale Konfiguration für die Computer Vision Engine."""
     temp_min_celsius: float = 20.0
     temp_max_celsius: float = 42.0
-    
-    # Segmentierung
-    basis_schwellenwert_pixel: int = 180  
     suchradius_pixel: int = 80          
     min_kontur_flaeche: int = 15          
-    
-    # Scoring-Gewichtung (Heuristik)
-    score_gewicht_absolut: float = 0.35    # Absolute Hitze
-    score_gewicht_kontrast: float = 0.25   # Delta zur Umgebung
-    score_gewicht_asymmetrie: float = 0.30 # Seitenvergleich (NEU: Stärker gewichtet)
-    score_gewicht_form: float = 0.10       # Zirkularität
-    
-    min_confidence_score: float = 70.0    
+    score_gewicht_absolut: float = 0.35    
+    score_gewicht_kontrast: float = 0.25   
+    score_gewicht_asymmetrie: float = 0.30 
+    score_gewicht_form: float = 0.10       
+    min_confidence_score: float = 65.0    
     nms_overlap_distanz: int = 40         
 
 @dataclass
@@ -49,11 +40,15 @@ class TemperatureStats:
     mean_val: float = 0.0
     
     def to_dict(self) -> dict:
-        return {"min": round(self.min_val, 2), "max": round(self.max_val, 2), "mean": round(self.mean_val, 2)}
+        return {
+            "min": round(self.min_val, 1), 
+            "max": round(self.max_val, 1), 
+            "mean": round(self.mean_val, 1)
+        }
 
 @dataclass
 class Entzuendung:
-    """Repräsentiert einen pathologischen Befund."""
+    """Repräsentiert einen pathologischen Befund im Wärmebild."""
     gelenk_name: str
     zentrum: Tuple[int, int]
     konturen_ebenen: Dict[str, np.ndarray]
@@ -65,53 +60,54 @@ class Entzuendung:
     delta_t_gegenseite: float = 0.0
 
 # =============================================================================
-# TREND-MANAGEMENT (THERAPIEMONITORING)
+# KLINISCHES THERAPIE-MONITORING (TREND-MANAGER)
 # =============================================================================
 
 class TrendManager:
-    """Verwaltet die Speicherung von Scans zur Verlaufsanalyse."""
-    DATABASE_FILE = "patient_history.json"
+    """Verwaltet Langzeitdatenbank für das Therapie-Monitoring pro Patient."""
+    DATABASE_FILE = "clinical_database.json"
 
     @staticmethod
-    def save_scan(file_hash: str, ergebnisse: List[Entzuendung]):
+    def save_scan(patient_id: str, ergebnisse: List[Entzuendung]) -> List[dict]:
         history = TrendManager.load_history()
         
+        # Rundung für saubere Speicherung
+        max_t = round(max([e.stats_celsius.max_val for e in ergebnisse]), 1) if ergebnisse else 0.0
+        
         scan_entry = {
-            "timestamp": datetime.datetime.now().isoformat(),
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
             "anomalien_count": len(ergebnisse),
-            "max_temp": max([e.stats_celsius.max_val for e in ergebnisse]) if ergebnisse else 0,
-            "details": [
-                {"name": e.gelenk_name, "temp": e.stats_celsius.max_val, "score": e.score_total}
-                for e in ergebnisse
-            ]
+            "max_temp": max_t,
+            "severity_peak": max([e.severity.value for e in ergebnisse]) if ergebnisse else 0
         }
         
-        if file_hash not in history:
-            history[file_hash] = []
+        if patient_id not in history:
+            history[patient_id] = []
+            
+        history[patient_id].append(scan_entry)
         
-        history[file_hash].append(scan_entry)
-        
-        with open(TrendManager.DATABASE_FILE, "w") as f:
+        with open(TrendManager.DATABASE_FILE, "w", encoding="utf-8") as f:
             json.dump(history, f, indent=4)
+            
+        return history[patient_id]
 
     @staticmethod
     def load_history() -> dict:
         if not os.path.exists(TrendManager.DATABASE_FILE):
             return {}
         try:
-            with open(TrendManager.DATABASE_FILE, "r") as f:
+            with open(TrendManager.DATABASE_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except:
+        except Exception:
             return {}
 
 # =============================================================================
-# THERMAL ANALYZER ENGINE
+# CORE VISION ENGINE (THERMAL ANALYZER)
 # =============================================================================
 
 class ThermalAnalyzer:
     """
-    Hauptklasse zur Analyse von Wärmebildern. 
-    Implementiert Multilevel-Segmentierung und asymmetrische Validierung.
+    Hauptklasse zur Analyse. Nutzt Adaptive Morphologie und Symmetrie-Prüfung.
     """
     def __init__(self, bild_cv: np.ndarray, messpunkte: List[dict], suchradius: int = 80):
         self.original_bild = bild_cv
@@ -122,33 +118,31 @@ class ThermalAnalyzer:
         self.h, self.w = bild_cv.shape[:2]
         self.gray = cv2.cvtColor(bild_cv, cv2.COLOR_BGR2GRAY)
         
-        # Hochwertige Vorverarbeitung
+        # High-End Rauschunterdrückung & Kontrastverstärkung
         self.denoised = cv2.bilateralFilter(self.gray, 9, 75, 75)
         clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
         self.processed = clahe.apply(self.denoised)
         
-        self.global_mean = np.mean(self.processed)
+        self.global_mean = float(np.mean(self.processed))
         self.gefundene_befunde: List[Entzuendung] = []
 
     def _pixel_zu_celsius(self, val: float) -> float:
         return self.config.temp_min_celsius + (val / 255.0) * (self.config.temp_max_celsius - self.config.temp_min_celsius)
 
     def _analyze_point(self, name: str, x: int, y: int) -> Optional[Entzuendung]:
-        """Analysiert einen spezifischen Punkt auf thermische Anomalien."""
-        # ROI Maskierung
+        """Prüft eine Region of Interest (ROI) auf Anomalien."""
         mask = np.zeros(self.processed.shape, dtype="uint8")
         cv2.circle(mask, (x, y), self.config.suchradius_pixel, 255, -1)
         roi = cv2.bitwise_and(self.processed, self.processed, mask=mask)
         
-        _, max_val, _, max_loc = cv2.minMaxLoc(roi, mask=mask)
-        local_mean = cv2.mean(self.processed, mask=mask)[0]
+        _, max_val, _, _ = cv2.minMaxLoc(roi, mask=mask)
         
-        # Multilevel-Thresholding (Core, Mid, Outer)
         ebenen = {}
         main_cnt = None
-        thresholds = {'core': max_val - 15, 'mid': max_val - 30, 'outer': max_val - 45}
+        thresholds = {'core': max_val - 10, 'mid': max_val - 25, 'outer': max_val - 40}
         
         for k, th in thresholds.items():
+            if th < 50: continue # Ignoriere extrem kalte Bereiche
             _, binarized = cv2.threshold(roi, th, 255, cv2.THRESH_BINARY)
             cnts, _ = cv2.findContours(binarized, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             if cnts:
@@ -159,30 +153,25 @@ class ThermalAnalyzer:
         
         if main_cnt is None: return None
         
-        # Morphologie & Stats
         m_x, m_y, m_w, m_h = cv2.boundingRect(main_cnt)
         temp_stats = TemperatureStats(
             max_val=self._pixel_zu_celsius(max_val),
             mean_val=self._pixel_zu_celsius(cv2.mean(self.processed, mask=binarized)[0])
         )
         
-        # Initialer Score (Ohne Symmetrie)
-        score = min(100.0, ((max_val - self.global_mean) / 50.0) * 100.0)
-        
+        # Heuristische Konfidenzberechnung
+        score = min(100.0, ((max_val - self.global_mean) / 60.0) * 100.0)
+        if score < self.config.min_confidence_score: return None
+
         return Entzuendung(
             gelenk_name=name, zentrum=(x, y), konturen_ebenen=ebenen,
-            bounding_box=(m_x, m_y, m_w, m_h), stats_celsius=temp_stats,
-            score_total=score
+            bounding_box=(m_x, m_y, m_w, m_h), stats_celsius=temp_stats, score_total=score
         )
 
     def _check_pair_symmetry(self):
-        """
-        Vergleicht linke und rechte Körperseite. 
-        Ein Delta > 1.0°C zwischen Paaren gilt als hochgradig verdächtig.
-        """
+        """Klinischer Seitenvergleich (Asymmetrie = Entzündungsindikator)."""
         paare = {}
         for b in self.gefundene_befunde:
-            # Extrahiere Identifikator (z.B. "Zeh 1")
             parts = b.gelenk_name.split(" - ")
             if len(parts) > 1:
                 key = parts[1]
@@ -190,18 +179,19 @@ class ThermalAnalyzer:
                 paare[key].append(b)
         
         for key, members in paare.items():
-            if len(members) == 2:
+            if len(members) >= 2:
+                # Vergleiche die beiden stärksten Befunde dieses Gelenktyps
+                members = sorted(members, key=lambda x: x.stats_celsius.max_val, reverse=True)
                 t1 = members[0].stats_celsius.max_val
                 t2 = members[1].stats_celsius.max_val
                 delta = abs(t1 - t2)
                 
-                if delta > 1.0:
-                    self.analyse_protokoll.append(f"⚖️ Symmetrie-Delta bei {key}: {delta:.1f}°C")
-                    for m in members:
+                if delta >= 0.8: # Ab 0.8°C klinisch relevant
+                    self.analyse_protokoll.append(f"⚖️ SYMMETRIE-ALARM {key}: Δ {delta:.1f}°C")
+                    for m in members[:2]:
                         m.symmetrie_alarm = True
                         m.delta_t_gegenseite = delta
-                        # Score-Boost durch Asymmetrie-Bestätigung
-                        m.score_total = min(100.0, m.score_total + (delta * 10))
+                        m.score_total = min(100.0, m.score_total + (delta * 12))
 
     def analysiere(self) -> List[Entzuendung]:
         self.analyse_protokoll.append(f"🚀 Starte Deep-Scan (Baseline: {self._pixel_zu_celsius(self.global_mean):.1f}°C)")
@@ -211,16 +201,17 @@ class ThermalAnalyzer:
             res = self._analyze_point(mp['name'], mp['punkt'][0], mp['punkt'][1])
             if res: raw_candidates.append(res)
             
-        # NMS & Symmetrie
-        self.gefundene_befunde = raw_candidates # In Realität NMS-Filtering hier
+        self.gefundene_befunde = raw_candidates
         self._check_pair_symmetry()
         
-        # Severity-Mapping
+        # Zuweisung des Härtegrads
         for b in self.gefundene_befunde:
-            if b.score_total > 90: b.severity = SeverityLevel.CRITICAL
-            elif b.score_total > 80: b.severity = SeverityLevel.SEVERE
-            elif b.score_total > 70: b.severity = SeverityLevel.MODERATE
+            if b.score_total >= 90: b.severity = SeverityLevel.CRITICAL
+            elif b.score_total >= 80: b.severity = SeverityLevel.SEVERE
+            elif b.score_total >= 70: b.severity = SeverityLevel.MODERATE
             else: b.severity = SeverityLevel.MILD
             
-        self.analyse_protokoll.append(f"🏁 Analyse beendet. {len(self.gefundene_befunde)} Befunde gesichert.")
+        # Nach Konfidenz sortieren
+        self.gefundene_befunde.sort(key=lambda x: x.score_total, reverse=True)
+        self.analyse_protokoll.append(f"🏁 Analyse beendet. {len(self.gefundene_befunde)} pathologische Muster detektiert.")
         return self.gefundene_befunde
