@@ -44,4 +44,4 @@ class FootFinder:
                     num = step + 1 if is_right else 5 - step
                     points.append({"name": f"{side} - Zeh {num}", "punkt": (cx, cy + int(fh*0.05))})
                     
-        return pointss
+        return points
