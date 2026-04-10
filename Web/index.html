@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ThermoAI Vision v15.5 | Professional Clinical Suite</title>
+    <title>ThermoAI Vision v15.6 | Clinical Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -21,6 +21,12 @@
             70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
             100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
         }
+        .shimmer {
+            background: linear-gradient(90deg, transparent, rgba(6, 182, 212, 0.1), transparent);
+            background-size: 200% 100%;
+            animation: shimmer 2s infinite;
+        }
+        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
     </style>
 </head>
 <body class="h-screen flex flex-col p-4 gap-4">
@@ -32,13 +38,13 @@
                 <svg class="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
             </div>
             <div>
-                <h1 class="text-xl font-bold tracking-tight">ThermoAI Vision <span class="text-cyan-400 text-sm font-mono ml-2">v15.5 PRO</span></h1>
-                <p class="text-[10px] text-slate-500 font-mono">JUDEND FORSCHT 2026 | RESEARCHER: JONA NOACK</p>
+                <h1 class="text-xl font-bold tracking-tight">ThermoAI Vision <span class="text-cyan-400 text-sm font-mono ml-2">v15.6 PRO</span></h1>
+                <p class="text-[10px] text-slate-500 font-mono italic">Klinische Diagnostik-Umgebung</p>
             </div>
         </div>
         <div id="statusIndicator" class="flex items-center gap-3 bg-slate-900/50 px-4 py-2 rounded-full border border-slate-800">
-            <div id="statusDot" class="h-2 w-2 rounded-full bg-amber-500"></div>
-            <span id="statusText" class="text-[10px] font-bold font-mono text-amber-500 uppercase tracking-widest">Initialisiere...</span>
+            <div id="statusDot" class="h-2.5 w-2.5 rounded-full bg-amber-500"></div>
+            <span id="statusText" class="text-[10px] font-bold font-mono text-amber-500 uppercase tracking-widest">Server-Check...</span>
         </div>
     </header>
 
@@ -47,23 +53,14 @@
         <!-- Sidebar -->
         <aside class="w-80 flex flex-col gap-4 shrink-0">
             <div class="glass-panel p-5 rounded-2xl flex flex-col gap-4">
-                <h2 class="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em]">Konfiguration</h2>
-                
-                <div class="space-y-1">
-                    <label class="text-[10px] text-slate-400 ml-1">PATIENTEN-ID</label>
-                    <input type="text" id="patientId" value="PAT-001" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-2 text-sm focus:border-cyan-500 outline-none transition-all font-mono">
-                </div>
+                <h2 class="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em]">Patienten-Daten</h2>
+                <input type="text" id="patientId" value="PAT-001" class="w-full bg-slate-950/50 border border-slate-700 rounded-xl px-4 py-2 text-sm focus:border-cyan-500 outline-none font-mono">
 
-                <div class="flex flex-col gap-2">
+                <div class="flex flex-col gap-2 mt-2">
                     <input type="file" id="imgInput" class="hidden" accept="image/*">
-                    <button onclick="document.getElementById('imgInput').click()" class="w-full py-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-semibold transition-all border border-slate-700 flex items-center justify-center gap-2">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-                        WÄRMEBILD LADEN
-                    </button>
-
-                    <button id="analyzeBtn" onclick="analyze()" class="w-full py-4 mt-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-bold shadow-lg shadow-cyan-900/20 transition-all flex items-center justify-center gap-2 group">
+                    <button onclick="document.getElementById('imgInput').click()" class="w-full py-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-semibold border border-slate-700">WÄRMEBILD LADEN</button>
+                    <button id="analyzeBtn" onclick="analyze()" class="w-full py-4 mt-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-bold shadow-lg shadow-cyan-900/20 transition-all flex items-center justify-center gap-2">
                         <span>ANALYSE STARTEN</span>
-                        <svg class="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"></path></svg>
                     </button>
                 </div>
             </div>
@@ -71,28 +68,25 @@
             <div class="glass-panel flex-1 rounded-2xl p-4 overflow-hidden flex flex-col">
                 <h2 class="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-3">System-Log</h2>
                 <div id="logArea" class="flex-1 overflow-y-auto font-mono text-[10px] space-y-1 pr-2 custom-scrollbar text-slate-400">
-                    <p>> Engine v15.5 geladen.</p>
+                    <p>> Konsole v15.6 bereit.</p>
                 </div>
             </div>
         </aside>
 
-        <!-- Main View -->
+        <!-- Main Workspace -->
         <div class="flex-1 flex flex-col gap-4 overflow-hidden">
             <div class="flex-1 flex gap-4 overflow-hidden">
                 <div class="flex-1 glass-panel rounded-2xl relative overflow-hidden bg-black/20 flex items-center justify-center">
                     <canvas id="mainCanvas" class="max-w-full max-h-full object-contain z-10"></canvas>
-                    <div id="loader" class="absolute inset-0 bg-slate-950/80 z-20 flex flex-col items-center justify-center hidden">
-                        <div class="w-12 h-12 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-                        <p id="loaderText" class="text-[10px] font-mono text-cyan-500 tracking-[0.3em] uppercase animate-pulse">Initialisiere Scan...</p>
-                    </div>
-                    <div id="noSignal" class="absolute flex flex-col items-center gap-3 opacity-30">
-                        <svg class="w-16 h-16 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path></svg>
-                        <span class="text-xs font-mono tracking-[0.2em] text-slate-500">BEREIT</span>
+                    <div id="loader" class="absolute inset-0 bg-slate-950/90 z-20 flex flex-col items-center justify-center hidden">
+                        <div class="w-16 h-16 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin mb-4 shadow-[0_0_20px_rgba(6,182,212,0.3)]"></div>
+                        <p id="loaderText" class="text-[11px] font-mono text-cyan-500 tracking-[0.3em] uppercase animate-pulse">Initialisiere Neural-Link...</p>
+                        <p id="loaderSub" class="text-[9px] font-mono text-slate-500 mt-2">Render.com Server braucht bis zu 2 Min zum Starten</p>
                     </div>
                 </div>
 
                 <div class="w-72 glass-panel rounded-2xl p-4 flex flex-col gap-4 overflow-hidden">
-                    <h2 class="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em]">Klinische Befunde</h2>
+                    <h2 class="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em]">Befund-Liste</h2>
                     <div id="findingsList" class="flex-1 overflow-y-auto space-y-2 custom-scrollbar pr-1"></div>
                 </div>
             </div>
@@ -110,25 +104,34 @@
         const API_KEY = "jf2026-jona-super-secret-key-9988";
         
         let loadedImg = null, chart = null, currentFindings = [];
+        let serverReady = false;
         const canvas = document.getElementById('mainCanvas'), ctx = canvas.getContext('2d');
 
-        // Wake-up Call beim Laden
-        window.addEventListener('load', async () => {
-            logMsg("Server-Ping gesendet (Wake-up)...");
+        // DAUER-POLLING FÜR DEN SERVER-STATUS
+        async function checkServerStatus() {
             try {
-                const res = await fetch(API_BASE);
+                const res = await fetch(`${API_BASE}/health`);
                 if(res.ok) {
+                    serverReady = true;
                     updateStatus('Online', 'bg-emerald-500', 'text-emerald-500');
-                    logMsg("Server ist wach und bereit.");
+                    logMsg("Verbindung zum Cloud-Server stabil.");
+                    return true;
                 }
             } catch(e) {
-                logMsg("Server schläft noch. Analyse wird ihn wecken.");
+                serverReady = false;
+                updateStatus('Cloud-Boot...', 'bg-amber-500', 'text-amber-500');
             }
-        });
+            return false;
+        }
+
+        // Starte Polling
+        const statusTimer = setInterval(() => {
+            if(!serverReady) checkServerStatus();
+        }, 5000);
+        checkServerStatus();
 
         document.getElementById('imgInput').onchange = (e) => {
             const file = e.target.files[0]; if(!file) return;
-            document.getElementById('noSignal').classList.add('hidden');
             const reader = new FileReader();
             reader.onload = (ev) => {
                 const img = new Image();
@@ -136,7 +139,7 @@
                     loadedImg = img; 
                     canvas.width = img.width; canvas.height = img.height; 
                     renderCanvas(); 
-                    logMsg(`Bild akquiriert: ${img.width}x${img.height}px`); 
+                    logMsg(`Bild akquiriert: ${file.name}`); 
                 };
                 img.src = ev.target.result;
             };
@@ -152,22 +155,23 @@
 
         function updateStatus(t, c_dot, c_txt) {
             const dot = document.getElementById('statusDot'), txt = document.getElementById('statusText');
-            dot.className = `h-2 w-2 rounded-full ${c_dot} status-pulse`;
-            txt.className = `text-[10px] font-mono ${c_txt} uppercase tracking-widest`;
+            dot.className = `h-2.5 w-2.5 rounded-full ${c_dot} ${t === 'Online' ? 'status-pulse' : ''}`;
+            txt.className = `text-[10px] font-bold font-mono ${c_txt} uppercase tracking-widest`;
             txt.innerText = t;
         }
 
-        // AUTO-RETRY LOGIK FÜR RENDER.COM
-        async function fetchWithRetry(url, options, retries = 3, backoff = 3000) {
+        // VERBESSERTE RETRY LOGIK (LÄNGER & AGGRESSIVER)
+        async function fetchWithRetry(url, options, retries = 6, backoff = 4000) {
             try {
                 const res = await fetch(url, options);
-                if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+                if (!res.ok) throw new Error(`Status ${res.status}`);
                 return await res.json();
             } catch (err) {
                 if (retries > 0) {
-                    logMsg(`Verbindung verzögert... Neuer Versuch in ${backoff/1000}s (Server bootet)`);
+                    const nextBackoff = backoff * 1.3;
+                    logMsg(`Server bootet... Re-Sync in ${Math.round(backoff/1000)}s`);
                     await new Promise(r => setTimeout(r, backoff));
-                    return fetchWithRetry(url, options, retries - 1, backoff * 1.5);
+                    return fetchWithRetry(url, options, retries - 1, nextBackoff);
                 }
                 throw err;
             }
@@ -178,7 +182,7 @@
             const btn = document.getElementById('analyzeBtn'), loader = document.getElementById('loader'), loaderText = document.getElementById('loaderText');
             
             btn.disabled = true; loader.classList.remove('hidden');
-            loaderText.innerText = "Verbindung wird aufgebaut...";
+            loaderText.innerText = "Synchronisiere mit Cloud...";
             
             const fd = new FormData();
             fd.append('file', document.getElementById('imgInput').files[0]);
@@ -191,18 +195,19 @@
                     body: fd
                 });
                 
+                serverReady = true;
                 currentFindings = data.daten;
                 renderCanvas();
                 updateFindingsList(data.daten);
                 updateChart(data.history_trend);
                 
-                document.getElementById('logArea').innerHTML = '';
+                document.getElementById('logArea').innerHTML = '<p class="text-slate-500">> Neue Analyse gesichert.</p>';
                 data.protokoll.forEach(p => logMsg(p, p.includes('⚠️') ? 'text-red-400 font-bold' : 'text-cyan-400'));
-                updateStatus('Bereit', 'bg-emerald-500', 'text-emerald-500');
+                updateStatus('Online', 'bg-emerald-500', 'text-emerald-500');
             } catch(e) {
-                logMsg(`FEHLER: Verbindung fehlgeschlagen.`, "text-red-500");
+                logMsg(`TIMEOUT: Server antwortet nicht (Cold Start).`, "text-red-500 font-bold");
                 updateStatus('Offline', 'bg-red-500', 'text-red-500');
-                alert("Der Server auf Render.com braucht zu lange zum Starten. Bitte warte 30 Sekunden und versuche es erneut.");
+                alert("Der Server auf Render.com braucht momentan zu lange zum Starten. Bitte warte ca. 30 Sekunden und versuche es noch einmal.");
             } finally { 
                 btn.disabled = false; loader.classList.add('hidden'); 
             }
@@ -213,8 +218,7 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(loadedImg, 0, 0);
             currentFindings.forEach(d => {
-                const b = d.bbox, isCrit = d.severity === 'CRITICAL' || d.symmetrie_alarm;
-                const color = isCrit ? '#ef4444' : '#06b6d4';
+                const b = d.bbox, color = (d.severity === 'CRITICAL' || d.symmetrie_alarm) ? '#ef4444' : '#06b6d4';
                 ctx.strokeStyle = color; ctx.lineWidth = 4; ctx.strokeRect(b[0], b[1], b[2], b[3]);
                 ctx.fillStyle = color; ctx.beginPath(); ctx.arc(d.zentrum.x, d.zentrum.y, 6, 0, Math.PI*2); ctx.fill();
             });
@@ -223,11 +227,12 @@
         function updateFindingsList(daten) {
             const list = document.getElementById('findingsList');
             list.innerHTML = daten.map(d => `
-                <div class="p-3 rounded-xl border ${d.symmetrie_alarm ? 'border-red-500 bg-red-500/10' : 'border-slate-800 bg-slate-900/40'}">
+                <div class="p-3 rounded-xl border ${d.symmetrie_alarm ? 'border-red-500/50 bg-red-500/10' : 'border-slate-800 bg-slate-900/40'}">
                     <div class="flex justify-between text-[11px] font-bold"><span>${d.gelenk}</span><span class="${d.symmetrie_alarm ? 'text-red-400' : 'text-cyan-400'}">${d.temp.max}°C</span></div>
-                    <div class="text-[9px] text-slate-500 uppercase mt-1">${d.severity} | SCORE: ${d.score}%</div>
+                    <div class="text-[9px] text-slate-500 uppercase mt-1">Status: ${d.severity}</div>
                 </div>
             `).join('');
+            if(!daten.length) list.innerHTML = '<div class="text-[10px] text-slate-500 text-center py-4 italic">Keine Anomalien.</div>';
         }
 
         function updateChart(history) {
@@ -238,9 +243,23 @@
                 type: 'line',
                 data: {
                     labels: h.map(x => x.timestamp.split(' ')[0]),
-                    datasets: [{ label: 'Max Temp', data: h.map(x => x.max_temp), borderColor: '#06b6d4', tension: 0.4 }]
+                    datasets: [{ 
+                        label: 'Max Temp', 
+                        data: h.map(x => x.max_temp), 
+                        borderColor: '#06b6d4', 
+                        backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                        fill: true,
+                        tension: 0.4 
+                    }]
                 },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+                options: { 
+                    responsive: true, maintainAspectRatio: false, 
+                    scales: { 
+                        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b' } },
+                        x: { grid: { display: false }, ticks: { color: '#64748b' } }
+                    },
+                    plugins: { legend: { display: false } } 
+                }
             });
         }
     </script>
