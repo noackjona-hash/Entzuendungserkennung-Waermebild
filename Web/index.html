@@ -3,489 +3,96 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JF 2026 - IGNITE</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <title>ThermoAI Cloud - Jona Noack</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    fontFamily: { sans: ['Inter', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
-                    colors: {
-                        dashboard: { 950: '#020617', 900: '#0f172a', 800: '#1e293b', 700: '#334155', border: '#1e293b', cyan: '#06b6d4', accent: '#38bdf8' }
-                    },
-                    animation: { 'scan-vertical': 'scanVertical 3s linear infinite' },
-                    keyframes: {
-                        scanVertical: {
-                            '0%': { transform: 'translateY(-100%)', opacity: '0' },
-                            '10%': { opacity: '1' },
-                            '90%': { opacity: '1' },
-                            '100%': { transform: 'translateY(1000%)', opacity: '0' },
-                        }
-                    }
-                }
-            }
-        }
-    </script>
     <style>
-        body { background-color: #020617; color: #f8fafc; background-image: radial-gradient(circle at 50% 0%, #0f172a 0%, #020617 70%); }
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
-        .tech-grid {
-            background-size: 40px 40px;
-            background-image: linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px), linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-            mask-image: radial-gradient(circle at center, black 40%, transparent 100%);
-            -webkit-mask-image: radial-gradient(circle at center, black 40%, transparent 100%);
-        }
-        .bracket-tl { top: 0; left: 0; border-top: 2px solid #06b6d4; border-left: 2px solid #06b6d4; }
-        .bracket-tr { top: 0; right: 0; border-top: 2px solid #06b6d4; border-right: 2px solid #06b6d4; }
-        .bracket-bl { bottom: 0; left: 0; border-bottom: 2px solid #06b6d4; border-left: 2px solid #06b6d4; }
-        .bracket-br { bottom: 0; right: 0; border-bottom: 2px solid #06b6d4; border-right: 2px solid #06b6d4; }
-        .target-bracket { position: absolute; width: 20px; height: 20px; transition: all 0.3s ease; }
-        .scan-line { position: absolute; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, #06b6d4, transparent); box-shadow: 0 0 20px 2px rgba(6, 182, 212, 0.6); display: none; z-index: 50; }
-        .spinner { border: 2px solid rgba(255, 255, 255, 0.1); border-left-color: #ffffff; border-radius: 50%; width: 18px; height: 18px; animation: spin 1s linear infinite; }
-        @keyframes spin { 100% { transform: rotate(360deg); } }
-        .crt-overlay { background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06)); background-size: 100% 4px, 6px 100%; pointer-events: none; }
-        .glass-panel { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
-        .mode-active { background-color: rgba(6, 182, 212, 0.2); border-color: #06b6d4; color: #fff; }
-        .mode-inactive { background-color: rgba(30, 41, 59, 0.5); border-color: transparent; color: #94a3b8; }
+        body { background: radial-gradient(circle at top, #0f172a, #020617); color: white; min-height: 100vh; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
     </style>
 </head>
-<body class="h-screen flex flex-col overflow-hidden selection:bg-dashboard-cyan selection:text-white">
-
-    <header class="glass-panel border-b border-dashboard-border shadow-2xl p-4 flex justify-between items-center z-20 shrink-0 relative">
-        <div class="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-dashboard-cyan to-transparent opacity-50"></div>
-        <div class="flex items-center gap-5">
-            <div class="relative bg-dashboard-900 p-2.5 rounded-xl ring-1 ring-dashboard-700 shadow-inner">
-                <svg class="w-6 h-6 text-dashboard-cyan" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
-            </div>
-            <div>
-                <h1 class="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-                    IGNITE<span class="text-transparent bg-clip-text bg-gradient-to-r from-dashboard-cyan to-blue-500">von</span> Jona
-                    <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-dashboard-cyan/10 text-dashboard-cyan ring-1 ring-dashboard-cyan/30 ml-2">PRO</span>
-                </h1>
-                <p class="text-xs text-slate-400 mt-0.5 font-mono flex items-center gap-2">
-                    <span>Jugend Forscht 2026</span> <span class="w-1 h-1 rounded-full bg-slate-600"></span> <span>Universal Body Tracking</span>
-                </p>
-            </div>
+<body class="p-8">
+    <header class="max-w-6xl mx-auto flex justify-between items-center mb-12">
+        <div>
+            <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-500">ThermoAI Vision v14</h1>
+            <p class="text-slate-400 font-mono text-sm">Clinical Diagnostic Suite | JF 2026</p>
         </div>
-        <div class="flex gap-4">
-            <button onclick="downloadReport()" id="btnExport" class="hidden glass-panel px-4 py-1.5 rounded-full text-xs font-mono text-white hover:bg-dashboard-800 transition-colors border-dashboard-cyan/30">📥 JSON Report</button>
-            <div class="flex items-center glass-panel rounded-full px-4 py-1.5 shadow-sm">
-                <div class="relative flex h-2.5 w-2.5 mr-3">
-                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
-                </div>
-                <span class="text-xs font-mono text-emerald-400 font-medium tracking-wide">API CONNECTED</span>
-            </div>
+        <div class="px-4 py-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-xs font-mono">
+            ● SERVER ONLINE
         </div>
     </header>
 
-    <main class="flex-1 flex overflow-hidden">
-        <aside class="w-[400px] glass-panel border-r border-dashboard-border flex flex-col z-10 shadow-2xl shrink-0">
-            <div class="p-6 flex-1 overflow-y-auto custom-scrollbar">
+    <main class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
+        <!-- Sidebar Controls -->
+        <div class="space-y-6">
+            <div class="glass p-6 rounded-2xl">
+                <h2 class="text-sm font-bold uppercase tracking-widest text-cyan-400 mb-4">Upload Center</h2>
+                <input type="file" id="thermalInput" class="hidden" accept="image/*">
+                <button onclick="document.getElementById('thermalInput').click()" class="w-full py-3 mb-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-all text-sm font-medium">📸 Thermal Image</button>
                 
-                <!-- Input Module -->
-                <div class="mb-8">
-                    <div class="flex items-center gap-3 mb-3 text-dashboard-accent">
-                        <div class="flex items-center justify-center w-6 h-6 rounded bg-dashboard-cyan/10 ring-1 ring-dashboard-cyan/30 text-xs font-mono font-bold">01</div>
-                        <h2 class="text-sm font-semibold tracking-widest uppercase text-slate-200">Sensor-Input</h2>
-                    </div>
-                    
-                    <label class="relative flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-dashboard-700 rounded-xl cursor-pointer bg-dashboard-950/50 hover:border-dashboard-cyan/60 transition-all duration-300">
-                        <div class="flex flex-col items-center justify-center relative z-10">
-                            <svg class="w-5 h-5 text-dashboard-cyan mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-                            <p class="text-sm text-slate-300 font-medium transition-colors">Wärmebild laden</p>
-                        </div>
-                        <input type="file" id="imageInput" accept="image/png, image/jpeg" class="hidden" />
-                    </label>
-                </div>
+                <input type="file" id="rgbInput" class="hidden" accept="image/*">
+                <button onclick="document.getElementById('rgbInput').click()" class="w-full py-3 rounded-xl bg-slate-800/50 border border-dashed border-slate-700 text-slate-400 text-xs">📷 Optional RGB Overlay</button>
+            </div>
 
-                <!-- Targeting Mode Module -->
-                <div class="mb-8">
-                    <div class="flex items-center justify-between mb-3">
-                        <div class="flex items-center gap-3 text-dashboard-accent">
-                            <div class="flex items-center justify-center w-6 h-6 rounded bg-dashboard-cyan/10 ring-1 ring-dashboard-cyan/30 text-xs font-mono font-bold">02</div>
-                            <h2 class="text-sm font-semibold tracking-widest uppercase text-slate-200">Zielerfassung</h2>
-                        </div>
-                        <button id="clearPointsBtn" class="hidden text-[10px] text-red-400 hover:text-red-300 font-mono underline uppercase tracking-wider">Löschen</button>
-                    </div>
-                    
-                    <div class="flex gap-2 p-1 bg-dashboard-950/80 rounded-lg ring-1 ring-dashboard-800 mb-3">
-                        <button id="modeAutoBtn" class="flex-1 py-2 text-xs font-medium rounded border mode-active transition-all" onclick="setMode('auto')">👣 Auto (Füße)</button>
-                        <button id="modeManualBtn" class="flex-1 py-2 text-xs font-medium rounded border mode-inactive hover:bg-dashboard-800 transition-all" onclick="setMode('manual')">🎯 Manuell (Alles)</button>
-                    </div>
-                    
-                    <p id="modeDescription" class="text-xs text-slate-400 font-mono bg-dashboard-900/50 p-3 rounded-lg border border-dashboard-800">
-                        Das System sucht automatisch nach Zehen.
-                    </p>
-                </div>
+            <button onclick="analyze()" class="w-full py-4 rounded-2xl bg-gradient-to-r from-cyan-600 to-blue-600 font-bold shadow-lg shadow-cyan-900/20 hover:scale-[1.02] transition-transform">
+                START DEEP ANALYSIS
+            </button>
+        </div>
 
-                <!-- Execution Module -->
-                <div class="mb-8">
-                    <div class="flex items-center gap-3 mb-3 text-dashboard-accent">
-                        <div class="flex items-center justify-center w-6 h-6 rounded bg-dashboard-cyan/10 ring-1 ring-dashboard-cyan/30 text-xs font-mono font-bold">03</div>
-                        <h2 class="text-sm font-semibold tracking-widest uppercase text-slate-200">Vektor-Scan</h2>
-                    </div>
-                    
-                    <button id="analyzeBtn" class="w-full relative overflow-hidden bg-gradient-to-r from-dashboard-cyan to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-semibold py-3.5 px-4 rounded-xl shadow-[0_0_20px_rgba(6,182,212,0.3)] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed group" disabled>
-                        <div class="flex items-center justify-center gap-2.5 relative z-10"><span id="analyzeBtnText" class="tracking-wide">Deep-Scan initialisieren</span></div>
-                    </button>
-                </div>
-
-                <!-- Diagnostics Dashboard -->
-                <div id="resultsArea" class="hidden flex-col gap-5 animate-[fadeIn_0.4s_ease-out]">
-                    <div class="h-px w-full bg-gradient-to-r from-transparent via-dashboard-700 to-transparent"></div>
-                    <div id="resultSummaryBox" class="rounded-xl p-4 backdrop-blur-md transition-all duration-300"><p id="resultSummary" class="text-sm leading-relaxed"></p></div>
-                    <div id="resultDetails" class="space-y-3"></div>
+        <!-- Main Viewport -->
+        <div class="md:col-span-2 space-y-6">
+            <div class="glass rounded-2xl aspect-video overflow-hidden relative group">
+                <canvas id="mainCanvas" class="w-full h-full object-contain"></canvas>
+                <div id="loader" class="absolute inset-0 bg-black/60 flex items-center justify-center hidden">
+                    <div class="animate-spin rounded-full h-12 w-12 border-4 border-cyan-500 border-t-transparent"></div>
                 </div>
             </div>
 
-            <!-- Terminal -->
-            <div class="h-64 bg-[#050505] border-t border-dashboard-border p-4 flex flex-col shrink-0 relative overflow-hidden group">
-                <div class="absolute inset-0 crt-overlay z-10"></div>
-                <div id="protocolArea" class="flex-1 overflow-y-auto custom-scrollbar text-[11px] font-mono leading-relaxed space-y-1 relative z-20 pr-2 pb-2">
-                    <p class="text-emerald-700/70">> SYSTEM_BOOT v4.0.0_UNIVERSAL</p>
-                    <p class="text-emerald-500">> Warte auf Bilddaten...</p>
+            <!-- Trend Analysis View -->
+            <div class="glass p-6 rounded-2xl">
+                <h3 class="text-xs font-bold text-slate-500 uppercase mb-4">Therapie-Trend (History)</h3>
+                <div id="trendLog" class="space-y-2 text-sm font-mono text-slate-300">
+                    <p class="text-slate-500 italic">Keine Verlaufsdaten für dieses Bild gefunden.</p>
                 </div>
             </div>
-        </aside>
-
-        <!-- Visual Workspace -->
-        <section class="flex-1 relative flex justify-center items-center overflow-hidden p-8 bg-dashboard-950">
-            <div class="absolute inset-0 tech-grid pointer-events-none opacity-30"></div>
-            
-            <div class="relative w-full h-full max-w-4xl max-h-[800px] flex justify-center items-center p-4">
-                <div class="target-bracket bracket-tl"></div>
-                <div class="target-bracket bracket-tr"></div>
-                <div class="target-bracket bracket-bl"></div>
-                <div class="target-bracket bracket-br"></div>
-
-                <div class="relative shadow-2xl ring-1 ring-dashboard-800 rounded-lg overflow-hidden bg-[#020617] w-full h-full flex justify-center items-center group">
-                    <canvas id="mainCanvas" class="block max-w-full max-h-full object-contain relative z-10 transition-transform cursor-crosshair"></canvas>
-                    <div id="scanLine" class="scan-line animate-scan-vertical"></div>
-                    
-                    <div id="canvasPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center text-dashboard-700 pointer-events-none">
-                        <svg class="w-16 h-16 mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                        <p class="font-mono text-sm tracking-widest uppercase">Kein Bildsignal</p>
-                    </div>
-                </div>
-            </div>
-        </section>
+        </div>
     </main>
 
     <script>
-        const API_URL = "https://entzuendungserkennung-waermebild.onrender.com/analyze"; 
-        const API_KEY = "jf2026-jona-super-secret-key-9988"; 
-        
-        const imageInput = document.getElementById('imageInput');
-        const canvas = document.getElementById('mainCanvas');
-        const ctx = canvas.getContext('2d');
-        const placeholder = document.getElementById('canvasPlaceholder');
-        const analyzeBtn = document.getElementById('analyzeBtn');
-        const analyzeBtnText = document.getElementById('analyzeBtnText');
-        const scanLine = document.getElementById('scanLine');
-        const btnExport = document.getElementById('btnExport');
-        
-        let originalImage = null;
-        let imageFile = null;
-        let currentMode = 'auto'; 
-        let manualPoints = []; 
-        let lastReportData = null;
+        async function analyze() {
+            const thermal = document.getElementById('thermalInput').files[0];
+            const rgb = document.getElementById('rgbInput').files[0];
+            if(!thermal) return alert("Bitte Wärmebild laden!");
 
-        function setMode(mode) {
-            currentMode = mode;
-            const autoBtn = document.getElementById('modeAutoBtn');
-            const manBtn = document.getElementById('modeManualBtn');
-            const desc = document.getElementById('modeDescription');
-            const clearBtn = document.getElementById('clearPointsBtn');
+            const fd = new FormData();
+            fd.append('file', thermal);
+            if(rgb) fd.append('rgb_file', rgb);
+            fd.append('mode', 'auto');
 
-            if (mode === 'auto') {
-                autoBtn.className = "flex-1 py-2 text-xs font-medium rounded border mode-active transition-all";
-                manBtn.className = "flex-1 py-2 text-xs font-medium rounded border mode-inactive hover:bg-dashboard-800 transition-all";
-                desc.innerHTML = "Das System sucht <b>automatisch</b> nach Zehenstrukturen. Perfekt für Standard-Messungen.";
-                clearBtn.classList.add('hidden');
-                manualPoints = [];
-                redrawOriginalWithPoints();
-            } else {
-                manBtn.className = "flex-1 py-2 text-xs font-medium rounded border mode-active transition-all";
-                autoBtn.className = "flex-1 py-2 text-xs font-medium rounded border mode-inactive hover:bg-dashboard-800 transition-all";
-                desc.innerHTML = "Klicke auf das Wärmebild, um Gelenke (Hand, Knie, etc.) <b>manuell zu markieren</b>.";
-                if(manualPoints.length > 0) clearBtn.classList.remove('hidden');
-            }
-            validateAnalyzeButton();
-        }
-
-        document.getElementById('clearPointsBtn').addEventListener('click', () => {
-            manualPoints = [];
-            document.getElementById('clearPointsBtn').classList.add('hidden');
-            redrawOriginalWithPoints();
-            validateAnalyzeButton();
-        });
-
-        imageInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            
-            imageFile = file;
-            const reader = new FileReader();
-            
-            reader.onload = (event) => {
-                const img = new Image();
-                img.onload = () => {
-                    originalImage = img;
-                    placeholder.style.display = 'none';
-                    document.getElementById('resultsArea').classList.add('hidden');
-                    btnExport.classList.add('hidden');
-                    manualPoints = [];
-                    
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    
-                    redrawOriginalWithPoints();
-                    document.querySelectorAll('.target-bracket').forEach(el => el.style.borderColor = '#38bdf8');
-                    validateAnalyzeButton();
-                };
-                img.src = event.target.result;
-            };
-            reader.readAsDataURL(file);
-        });
-
-        canvas.addEventListener('click', (e) => {
-            if (currentMode !== 'manual' || !originalImage) return;
-
-            const rect = canvas.getBoundingClientRect();
-            // Saubere Skalierungsberechnung, um HTML-CSS-Größe mit internem Canvas abzugleichen
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
-            
-            const x = (e.clientX - rect.left) * scaleX;
-            const y = (e.clientY - rect.top) * scaleY;
-
-            manualPoints.push({
-                x: Math.round(x), 
-                y: Math.round(y), 
-                name: `Gelenk ${manualPoints.length + 1}`
-            });
-
-            document.getElementById('clearPointsBtn').classList.remove('hidden');
-            redrawOriginalWithPoints();
-            validateAnalyzeButton();
-        });
-
-        function redrawOriginalWithPoints() {
-            if (!originalImage) return;
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(originalImage, 0, 0, canvas.width, canvas.height);
-
-            if (currentMode === 'manual' && manualPoints.length > 0) {
-                // Anzeige des Suchradius (visuelles Feedback)
-                const suchRadius = Math.max(30, canvas.width * 0.05); 
-                
-                manualPoints.forEach(pt => {
-                    // Suchbereich andeuten
-                    ctx.beginPath();
-                    ctx.arc(pt.x, pt.y, suchRadius, 0, 2 * Math.PI);
-                    ctx.fillStyle = 'rgba(6, 182, 212, 0.1)';
-                    ctx.fill();
-                    ctx.strokeStyle = 'rgba(6, 182, 212, 0.4)';
-                    ctx.lineWidth = 1;
-                    ctx.stroke();
-
-                    // Kreuz in der Mitte
-                    drawCross(pt.x, pt.y, 8, '#06b6d4', 2);
-                    
-                    // Name
-                    ctx.fillStyle = '#06b6d4';
-                    ctx.font = "bold 14px monospace";
-                    ctx.fillText(pt.name, pt.x + 15, pt.y - 15);
-                });
-            }
-        }
-
-        function drawCross(x, y, size, color = '#ffffff', width = 1) {
-            ctx.strokeStyle = color;
-            ctx.lineWidth = width;
-            ctx.beginPath();
-            ctx.moveTo(x - size, y);
-            ctx.lineTo(x + size, y);
-            ctx.moveTo(x, y - size);
-            ctx.lineTo(x, y + size);
-            ctx.stroke();
-        }
-
-        function validateAnalyzeButton() {
-            if (!imageFile || (currentMode === 'manual' && manualPoints.length === 0)) {
-                analyzeBtn.disabled = true;
-            } else {
-                analyzeBtn.disabled = false;
-            }
-        }
-
-        analyzeBtn.addEventListener('click', async () => {
-            if (!imageFile) return;
-
-            analyzeBtn.disabled = true;
-            analyzeBtnText.innerHTML = '<div class="flex items-center gap-2"><div class="spinner"></div><span>Daten werden übertragen...</span></div>';
-            scanLine.style.display = 'block'; 
-            
-            const formData = new FormData();
-            formData.append('file', imageFile);
-            formData.append('mode', currentMode);
-            if (currentMode === 'manual') formData.append('manual_points', JSON.stringify(manualPoints));
+            document.getElementById('loader').classList.remove('hidden');
 
             try {
-                const response = await fetch(API_URL, {
+                const res = await fetch('http://localhost:8000/analyze', {
                     method: 'POST',
-                    headers: { 'X-API-Key': API_KEY },
-                    body: formData
+                    headers: { 'X-API-Key': 'jf2026-jona-super-secret-key-9988' },
+                    body: fd
                 });
-
-                if (!response.ok) throw new Error(`Server Fehler: ${response.status}`);
-                const data = await response.json();
-                lastReportData = data;
-                
-                renderOverlay(data);
-                fillDashboard(data);
-
-            } catch (error) {
-                alert(`Verbindungsfehler:\n${error.message}`);
+                const data = await res.json();
+                renderResults(data);
+            } catch (e) {
+                alert("Verbindungsfehler zur API!");
             } finally {
-                analyzeBtnText.innerText = "Neuen Scan durchführen";
-                scanLine.style.display = 'none';
-                validateAnalyzeButton(); 
-            }
-        });
-
-        function getSeverityColor(severity) {
-            switch(severity) {
-                case 'CRITICAL': return '#ef4444'; 
-                case 'SEVERE': return '#f97316'; 
-                case 'MODERATE': return '#eab308'; 
-                default: return '#06b6d4'; 
+                document.getElementById('loader').classList.add('hidden');
             }
         }
 
-        function renderOverlay(data) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(originalImage, 0, 0, canvas.width, canvas.height);
-
-            if (data.messpunkte) {
-                data.messpunkte.forEach(mp => drawCross(mp.x, mp.y, 10, 'rgba(255,255,255,0.8)', 1));
-            }
-
-            if (data.daten) {
-                data.daten.forEach(entz => {
-                    const color = getSeverityColor(entz.severity);
-                    ctx.strokeStyle = color;
-                    ctx.lineWidth = 1;
-                    ctx.strokeRect(entz.bounding_box.x, entz.bounding_box.y, entz.bounding_box.w, entz.bounding_box.h);
-
-                    const contourStyles = {
-                        'outer': { color: 'rgba(255, 255, 0, 0.7)', width: 2, fill: null },
-                        'mid': { color: 'rgba(255, 165, 0, 0.7)', width: 2, fill: null },
-                        'core': { color: null, width: 0, fill: 'rgba(255, 0, 0, 0.5)' }
-                    };
-
-                    Object.entries(entz.konturen).forEach(([ebene, points]) => {
-                        if (points && points.length > 0) {
-                            ctx.beginPath();
-                            ctx.moveTo(points[0][0], points[0][1]);
-                            for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
-                            ctx.closePath();
-                            
-                            const style = contourStyles[ebene];
-                            if (style) {
-                                if (style.fill) { ctx.fillStyle = style.fill; ctx.fill(); }
-                                if (style.color) { ctx.strokeStyle = style.color; ctx.lineWidth = style.width; ctx.stroke(); }
-                            }
-                        }
-                    });
-
-                    drawCross(entz.zentrum.x, entz.zentrum.y, 15, '#000', 3);
-                    drawCross(entz.zentrum.x, entz.zentrum.y, 15, '#fff', 1);
-
-                    // Text-Labeling
-                    ctx.font = "14px 'Inter', sans-serif";
-                    const w1 = ctx.measureText(entz.gelenk).width;
-                    const w2 = ctx.measureText(`T-Max: ${entz.temperatur_celsius.max}°C`).width;
-                    const maxW = Math.max(w1, w2, ctx.measureText(`Conf: ${entz.score_percent}%`).width) + 16;
-                    
-                    const boxX = entz.bounding_box.x;
-                    const boxY = Math.max(0, entz.bounding_box.y - 75);
-                    
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-                    ctx.fillRect(boxX, boxY, maxW, 65);
-                    ctx.strokeStyle = color;
-                    ctx.lineWidth = 1;
-                    ctx.strokeRect(boxX, boxY, maxW, 65);
-                    
-                    ctx.fillStyle = '#ffffff'; ctx.fillText(entz.gelenk, boxX + 8, boxY + 20);
-                    ctx.fillStyle = '#ef4444'; ctx.fillText(`T-Max: ${entz.temperatur_celsius.max}°C`, boxX + 8, boxY + 38);
-                    ctx.fillStyle = color; ctx.fillText(`Conf: ${entz.score_percent}%`, boxX + 8, boxY + 56);
-                });
-            }
-        }
-
-        function fillDashboard(data) {
-            document.getElementById('resultsArea').classList.remove('hidden');
-            btnExport.classList.remove('hidden');
-            document.getElementById('resultDetails').innerHTML = '';
-            const protocolArea = document.getElementById('protocolArea');
-            protocolArea.innerHTML = '';
-
-            if (data.protokoll) {
-                data.protokoll.forEach(log => {
-                    const p = document.createElement('p');
-                    p.className = "text-emerald-400 font-mono";
-                    p.innerText = "> " + log;
-                    protocolArea.appendChild(p);
-                });
-                protocolArea.scrollTop = protocolArea.scrollHeight;
-            }
-
-            const summaryBox = document.getElementById('resultSummaryBox');
-            if (data.gefundene_anomalien === 0) {
-                summaryBox.className = "rounded-xl p-4 backdrop-blur-md bg-emerald-900/10 border border-emerald-500/20";
-                document.getElementById('resultSummary').innerHTML = `<span class="font-bold text-emerald-400 font-mono">STATUS: NOMINAL</span><br><span class="text-slate-300 mt-1 block">Keine pathologischen thermischen Anomalien.</span>`;
-            } else {
-                summaryBox.className = "rounded-xl p-4 backdrop-blur-md bg-red-900/10 border border-red-500/30";
-                document.getElementById('resultSummary').innerHTML = `<span class="font-bold text-red-400 font-mono">STATUS: ANOMALIE DETEKTIERT</span><br><span class="text-slate-200 mt-1 block">Es wurden ${data.gefundene_anomalien} akute Herde verifiziert.</span>`;
-
-                data.daten.forEach((entz, index) => {
-                    const card = document.createElement('div');
-                    card.className = "glass-panel p-4 rounded-xl shadow-lg border-l-4 border-l-red-500 relative overflow-hidden group";
-                    card.innerHTML = `
-                        <div class="flex justify-between items-center mb-3 relative z-10">
-                            <div class="flex items-center gap-2">
-                                <span class="text-dashboard-700 font-mono text-xs">#0${index+1}</span>
-                                <p class="font-bold text-red-400 tracking-wide uppercase text-sm">${entz.gelenk}</p>
-                            </div>
-                            <span class="bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] px-2 py-1 rounded font-mono font-bold">CONF: ${entz.score_percent}%</span>
-                        </div>
-                        <div class="grid grid-cols-2 gap-3 text-xs font-mono relative z-10 bg-dashboard-950/50 p-2.5 rounded-lg border border-dashboard-800">
-                            <div class="flex flex-col"><span class="text-slate-500 uppercase text-[9px] mb-1">Max Temperatur</span><span class="text-white text-sm font-semibold">${entz.temperatur_celsius.max} °C</span></div>
-                            <div class="flex flex-col"><span class="text-slate-500 uppercase text-[9px] mb-1">Fläche</span><span class="text-white text-sm">${entz.geometrie.flaeche_px} px²</span></div>
-                        </div>
-                    `;
-                    document.getElementById('resultDetails').appendChild(card);
-                });
-            }
-        }
-
-        function downloadReport() {
-            if (!lastReportData) return;
-            // Entferne Konturen, da das JSON sonst extrem riesig wird
-            const cleanData = JSON.parse(JSON.stringify(lastReportData));
-            cleanData.daten.forEach(d => delete d.konturen);
+        function renderResults(data) {
+            // Trend Log updaten
+            const log = document.getElementById('trendLog');
+            log.innerHTML = data.history_trend.length > 0 
+                ? data.history_trend.map(s => `<div>[${s.timestamp.split('T')[0]}] Befunde: ${s.anomalien_count} | Max: ${s.max_temp}°C</div>`).join('')
+                : '<p class="text-emerald-500">Erster Scan für diesen Patienten gespeichert.</p>';
             
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(cleanData, null, 2));
-            const dlAnchorElem = document.createElement('a');
-            dlAnchorElem.setAttribute("href", dataStr);
-            dlAnchorElem.setAttribute("download", `JF2026_Report_${new Date().toISOString().split('T')[0]}.json`);
-            dlAnchorElem.click();
+            // Canvas Overlay Logik hier...
         }
     </script>
 </body>
