@@ -3,276 +3,341 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ThermoAI Vision v15 | Clinical Dashboard</title>
-    <!-- Tailwind CSS -->
+    <title>ThermoAI Vision v15.4 | Professional Clinical Suite</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Chart.js für professionelle Graphen -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
-    <script>
-        tailwind.config = { darkMode: 'class', theme: { extend: { colors: { clinical: { dark: '#020617', panel: '#0f172a', accent: '#06b6d4' } } } } }
-    </script>
     <style>
-        body { background-color: #020617; color: #f8fafc; font-family: 'Inter', sans-serif; }
-        .glass-panel { background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05); }
-        canvas#mainCanvas { image-rendering: pixelated; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+        
+        body { 
+            background-color: #020617; 
+            color: #f8fafc; 
+            font-family: 'Inter', sans-serif; 
+            overflow: hidden; 
+        }
+        .glass-panel { 
+            background: rgba(15, 23, 42, 0.8); 
+            backdrop-filter: blur(16px); 
+            border: 1px solid rgba(255,255,255,0.08); 
+        }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
+        
+        .status-pulse {
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
     </style>
 </head>
-<body class="p-4 md:p-8 min-h-screen flex flex-col">
+<body class="h-screen flex flex-col p-4 gap-4">
 
     <!-- Header -->
-    <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 glass-panel p-6 rounded-2xl shadow-2xl border-t border-t-clinical-accent/30">
-        <div>
-            <h1 class="text-3xl font-bold tracking-tight text-white flex items-center gap-3">
-                ThermoAI Vision <span class="bg-clinical-accent/20 text-clinical-accent px-2 py-0.5 rounded text-sm font-mono ring-1 ring-clinical-accent/50">v15 ENTERPRISE</span>
-            </h1>
-            <p class="text-sm text-slate-400 mt-1 font-mono">Lead Researcher: Jona Noack | Jugend Forscht 2026</p>
-        </div>
-        <div class="mt-4 md:mt-0 flex items-center gap-4">
-            <div class="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 px-4 py-2 rounded-full">
-                <span class="relative flex h-3 w-3"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span>
-                <span class="text-xs font-mono text-emerald-400 font-bold">API CONNECTED</span>
+    <header class="flex justify-between items-center glass-panel p-4 rounded-2xl shrink-0">
+        <div class="flex items-center gap-4">
+            <div class="bg-cyan-500/20 p-2 rounded-xl border border-cyan-500/30">
+                <svg class="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
             </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-tight">ThermoAI Vision <span class="text-cyan-400 text-sm font-mono ml-2">v15.4 PRO</span></h1>
+                <p class="text-[10px] text-slate-500 font-mono">JUGEND FORSCHT 2026 | RESEARCHER: JONA NOACK</p>
+            </div>
+        </div>
+        <div id="statusIndicator" class="flex items-center gap-3 bg-slate-900/50 px-4 py-2 rounded-full border border-slate-800">
+            <div id="statusDot" class="h-2 w-2 rounded-full bg-amber-500"></div>
+            <span id="statusText" class="text-[10px] font-bold font-mono text-amber-500 uppercase tracking-widest">Warten auf Signal</span>
         </div>
     </header>
 
-    <main class="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="flex-1 flex gap-4 overflow-hidden">
         
-        <!-- Linke Spalte: Steuerung -->
-        <div class="space-y-6">
-            <!-- Upload Module -->
-            <div class="glass-panel p-6 rounded-2xl shadow-lg">
-                <h2 class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2"><svg class="w-4 h-4 text-clinical-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg> 1. Akquise</h2>
+        <!-- Sidebar: Controls & Log -->
+        <aside class="w-80 flex flex-col gap-4 shrink-0">
+            <div class="glass-panel p-5 rounded-2xl flex flex-col gap-4">
+                <h2 class="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em]">Konfiguration</h2>
                 
-                <label class="block mb-3">
-                    <span class="text-xs text-slate-400 mb-1 block">Patienten ID (Für Verlauf)</span>
-                    <input type="text" id="patientId" value="PATIENT-001" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-clinical-accent font-mono">
-                </label>
+                <div class="space-y-1">
+                    <label class="text-[10px] text-slate-400 ml-1">PATIENTEN-ID</label>
+                    <input type="text" id="patientId" value="PAT-001" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-2 text-sm focus:border-cyan-500 outline-none transition-all font-mono">
+                </div>
 
-                <input type="file" id="thermalInput" class="hidden" accept="image/png, image/jpeg">
-                <button onclick="document.getElementById('thermalInput').click()" class="w-full py-3 mb-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 transition-colors text-sm font-medium flex items-center justify-center gap-2">
-                    📸 Wärmebild laden
-                </button>
-                <p id="fileNameDisplay" class="text-[10px] text-center text-slate-500 font-mono break-all"></p>
+                <div class="flex flex-col gap-2">
+                    <input type="file" id="imgInput" class="hidden" accept="image/*">
+                    <button onclick="document.getElementById('imgInput').click()" class="w-full py-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-semibold transition-all border border-slate-700 flex items-center justify-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                        WÄRMEBILD LADEN
+                    </button>
+
+                    <!-- NEU: RGB Overlay Button & Slider -->
+                    <input type="file" id="rgbInput" class="hidden" accept="image/*">
+                    <button onclick="document.getElementById('rgbInput').click()" class="w-full py-2 bg-slate-800/50 hover:bg-slate-700 rounded-xl text-[10px] font-semibold transition-all border border-dashed border-slate-700 flex items-center justify-center gap-2 text-slate-400 mt-2">
+                        + RGB-FOTO FÜR OVERLAY (OPTIONAL)
+                    </button>
+                    
+                    <div id="opacityControl" class="space-y-1 mt-2 hidden">
+                        <div class="flex justify-between items-center px-1">
+                            <label class="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Wärme</label>
+                            <label class="text-[9px] text-slate-400 font-bold uppercase tracking-widest">RGB Foto</label>
+                        </div>
+                        <input type="range" id="opacitySlider" min="0" max="100" value="50" class="w-full accent-cyan-500 cursor-pointer">
+                    </div>
+
+                    <button id="analyzeBtn" onclick="analyze()" class="w-full py-4 mt-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-bold shadow-lg shadow-cyan-900/20 transition-all flex items-center justify-center gap-2 group">
+                        <span>ANALYSE STARTEN</span>
+                        <svg class="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"></path></svg>
+                    </button>
+                </div>
             </div>
 
-            <!-- Analyse Starten -->
-            <button id="analyzeBtn" onclick="analyze()" class="w-full py-4 rounded-2xl bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-500 hover:to-blue-600 font-bold shadow-[0_0_20px_rgba(6,182,212,0.3)] transition-all flex items-center justify-center gap-2 disabled:opacity-50">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
-                DEEP SCAN INITIALISIEREN
-            </button>
-
-            <!-- Kurz-Protokoll -->
-            <div class="glass-panel p-4 rounded-2xl h-48 overflow-y-auto font-mono text-[10px] space-y-1" id="logArea">
-                <p class="text-slate-500">> SYSTEM READY.</p>
+            <!-- Log Area -->
+            <div class="glass-panel flex-1 rounded-2xl p-4 overflow-hidden flex flex-col">
+                <h2 class="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-3">System-Log</h2>
+                <div id="logArea" class="flex-1 overflow-y-auto font-mono text-[10px] space-y-1 pr-2 custom-scrollbar text-slate-400">
+                    <p>> ThermoAI Vision V16 initialisiert.</p>
+                </div>
             </div>
-        </div>
+        </aside>
 
-        <!-- Rechte Spalte: Viewport & Charts -->
-        <div class="lg:col-span-2 flex flex-col gap-6">
+        <!-- Main Content Area -->
+        <div class="flex-1 flex flex-col gap-4 overflow-hidden">
             
-            <!-- Bild & Overlay Canvas -->
-            <div class="glass-panel rounded-2xl p-4 shadow-xl flex justify-center items-center relative overflow-hidden bg-[#050505] min-h-[400px]">
-                <canvas id="mainCanvas" class="max-w-full max-h-[500px] object-contain z-10 relative"></canvas>
-                
-                <div id="loadingOverlay" class="absolute inset-0 bg-clinical-dark/80 backdrop-blur-sm z-20 hidden flex-col items-center justify-center">
-                    <div class="w-16 h-16 border-4 border-clinical-accent border-t-transparent rounded-full animate-spin mb-4"></div>
-                    <p class="font-mono text-clinical-accent tracking-widest text-sm animate-pulse">BERECHNE TENSOR-GEOMETRIE...</p>
+            <!-- Canvas & Findings List -->
+            <div class="flex-1 flex gap-4 overflow-hidden">
+                <!-- Visual Workspace -->
+                <div class="flex-1 glass-panel rounded-2xl relative overflow-hidden bg-black/20 flex items-center justify-center">
+                    <canvas id="mainCanvas" class="max-w-full max-h-full object-contain z-10"></canvas>
+                    
+                    <div id="loader" class="absolute inset-0 bg-slate-950/80 z-20 flex flex-col items-center justify-center hidden">
+                        <div class="w-12 h-12 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                        <p class="text-[10px] font-mono text-cyan-500 tracking-[0.3em] uppercase animate-pulse">Scanning Topologies...</p>
+                    </div>
+
+                    <div id="noSignal" class="absolute flex flex-col items-center gap-3 opacity-30 group">
+                        <svg class="w-16 h-16 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path></svg>
+                        <span class="text-xs font-mono tracking-[0.2em] text-slate-500">KEIN BILD GELADEN</span>
+                    </div>
                 </div>
-                
-                <div id="placeholderText" class="absolute text-slate-600 font-mono tracking-widest flex flex-col items-center">
-                    <svg class="w-12 h-12 mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
-                    NO SIGNAL
+
+                <!-- Findings Sidebar -->
+                <div class="w-72 glass-panel rounded-2xl p-4 flex flex-col gap-4 overflow-hidden">
+                    <h2 class="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em]">Klinische Befunde</h2>
+                    <div id="findingsList" class="flex-1 overflow-y-auto space-y-2 custom-scrollbar pr-1">
+                        <div class="text-[10px] text-slate-500 italic text-center py-8">Warte auf Scan-Ergebnisse...</div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Interaktiver Trend-Graph (Chart.js) -->
-            <div class="glass-panel rounded-2xl p-6 shadow-xl">
-                <h2 class="text-sm font-bold text-slate-300 uppercase mb-4 flex items-center justify-between">
-                    Therapie-Verlauf (Trend-Analyse)
-                    <span class="text-[10px] font-mono bg-blue-500/20 text-blue-400 px-2 py-1 rounded">LIVE CHART</span>
-                </h2>
-                <div class="h-64 w-full relative">
+            <!-- Trend Chart -->
+            <div class="h-64 glass-panel rounded-2xl p-5 flex flex-col gap-2">
+                <div class="flex justify-between items-center mb-1">
+                    <h2 class="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em]">Therapie-Monitoring</h2>
+                    <span class="text-[9px] font-mono text-cyan-500 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">HISTORISCHE MAX-TEMP</span>
+                </div>
+                <div class="flex-1 relative">
                     <canvas id="trendChart"></canvas>
                 </div>
             </div>
-            
         </div>
-    </main>
+    </div>
 
     <script>
-        const API_URL = "https://entzuendungserkennung-waermebild.onrender.com/analyze"; // Passe dies ggf. für Render.com an
+        const API_URL = "https://entzuendungserkennung-waermebild.onrender.com/analyze";
+        const API_KEY = "jf2026-jona-super-secret-key-9988";
         
-        let loadedImage = null;
-        let chartInstance = null;
+        let loadedThermalImg = null;
+        let loadedRgbImg = null;
+        let chart = null;
+        let currentFindings = [];
         
-        const canvas = document.getElementById('mainCanvas');
-        const ctx = canvas.getContext('2d');
-        const fileInput = document.getElementById('thermalInput');
+        const canvas = document.getElementById('mainCanvas'), ctx = canvas.getContext('2d');
+        const opacitySlider = document.getElementById('opacitySlider');
 
-        // Bildauswahl & Vorschau
-        fileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            document.getElementById('fileNameDisplay').innerText = file.name;
-            document.getElementById('placeholderText').style.display = 'none';
-            
+        // Thermal Image Load
+        document.getElementById('imgInput').onchange = (e) => {
+            const file = e.target.files[0]; if(!file) return;
+            document.getElementById('noSignal').classList.add('hidden');
             const reader = new FileReader();
-            reader.onload = (event) => {
+            reader.onload = (ev) => {
                 const img = new Image();
-                img.onload = () => {
-                    loadedImage = img;
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    ctx.clearRect(0,0, canvas.width, canvas.height);
-                    ctx.drawImage(img, 0, 0);
+                img.onload = () => { 
+                    loadedThermalImg = img; 
+                    canvas.width = img.width; 
+                    canvas.height = img.height; 
+                    renderCanvas(); 
+                    logMsg(`Wärmebild akquiriert: ${img.width}x${img.height}px`); 
                 };
-                img.src = event.target.result;
+                img.src = ev.target.result;
             };
             reader.readAsDataURL(file);
-        });
+        };
 
-        function logMsg(msg, color="text-slate-400") {
-            const el = document.getElementById('logArea');
-            el.innerHTML += `<p class="${color}">> ${msg}</p>`;
-            el.scrollTop = el.scrollHeight;
+        // RGB Image Load
+        document.getElementById('rgbInput').onchange = (e) => {
+            const file = e.target.files[0]; if(!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const img = new Image();
+                img.onload = () => { 
+                    loadedRgbImg = img; 
+                    document.getElementById('opacityControl').classList.remove('hidden');
+                    renderCanvas(); 
+                    logMsg(`RGB-Overlay erfolgreich geladen.`); 
+                };
+                img.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+        };
+
+        // Live Slider Listener
+        opacitySlider.addEventListener('input', renderCanvas);
+
+        function logMsg(m, c="text-slate-400") {
+            const l = document.getElementById('logArea');
+            const p = document.createElement('p');
+            p.className = c; p.innerText = `> ${m}`;
+            l.appendChild(p); l.scrollTop = l.scrollHeight;
         }
 
         async function analyze() {
-            if (!loadedImage) return alert("Bitte zuerst ein Wärmebild laden.");
-            
-            const file = fileInput.files[0];
-            const pid = document.getElementById('patientId').value || "ANONYMOUS";
+            if(!loadedThermalImg) return alert("Bitte laden Sie zuerst ein Wärmebild.");
+            const btn = document.getElementById('analyzeBtn'), loader = document.getElementById('loader');
+            btn.disabled = true; loader.classList.remove('hidden');
             
             const fd = new FormData();
-            fd.append('file', file);
-            fd.append('mode', 'auto');
-            fd.append('patient_id', pid);
-
-            document.getElementById('loadingOverlay').classList.remove('hidden');
-            document.getElementById('analyzeBtn').disabled = true;
+            fd.append('file', document.getElementById('imgInput').files[0]);
+            fd.append('patient_id', document.getElementById('patientId').value);
 
             try {
-                const res = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: { 'X-API-Key': 'jf2026-jona-super-secret-key-9988' },
-                    body: fd
+                const res = await fetch(API_URL, { 
+                    method: 'POST', 
+                    headers: { 'X-API-Key': API_KEY }, 
+                    body: fd 
                 });
                 
-                if (!res.ok) throw new Error("API Fehler");
+                if(!res.ok) throw new Error(await res.text() || `Server Error ${res.status}`);
+                
                 const data = await res.json();
+                currentFindings = data.daten;
                 
-                // Overlay Zeichnen
-                drawResults(data.daten);
-                
-                // Chart Update
+                renderCanvas();
+                updateFindingsList(data.daten);
                 updateChart(data.history_trend);
                 
-                // Log
-                document.getElementById('logArea').innerHTML = '';
-                data.protokoll.forEach(l => logMsg(l, l.includes('ALARM') ? 'text-red-400 font-bold' : 'text-emerald-400'));
+                document.getElementById('logArea').innerHTML = '<p class="text-slate-500">> Signalverarbeitung abgeschlossen.</p>';
+                data.protokoll.forEach(p => logMsg(p, p.includes('⚠️') ? 'text-red-400 font-bold' : 'text-cyan-400'));
+                updateStatus('Online / Bereit', 'bg-emerald-500', 'text-emerald-500');
                 
             } catch(e) {
-                logMsg(`FEHLER: ${e.message}`, "text-red-500");
-                alert("Fehler bei der Verbindung zur API.");
-            } finally {
-                document.getElementById('loadingOverlay').classList.add('hidden');
-                document.getElementById('analyzeBtn').disabled = false;
+                logMsg(`Analyse-Fehler: ${e.message}`, "text-red-500");
+                updateStatus('API Fehler', 'bg-red-500', 'text-red-500');
+            } finally { 
+                btn.disabled = false; loader.classList.add('hidden'); 
             }
         }
 
-        function drawResults(daten) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(loadedImage, 0, 0);
-            
-            daten.forEach(entz => {
-                const box = entz.bbox;
-                const isCrit = entz.severity === 'CRITICAL' || entz.symmetrie_alarm;
-                const color = isCrit ? '#ef4444' : '#0ea5e9'; // Rot oder Cyan
-                
-                // Box
-                ctx.strokeStyle = color;
-                ctx.lineWidth = 2;
-                ctx.strokeRect(box[0], box[1], box[2], box[3]);
-                
-                // Konturen malen
-                if(entz.konturen.mid) {
-                    ctx.beginPath();
-                    ctx.moveTo(entz.konturen.mid[0][0], entz.konturen.mid[0][1]);
-                    for(let i=1; i<entz.konturen.mid.length; i++) ctx.lineTo(entz.konturen.mid[i][0], entz.konturen.mid[i][1]);
-                    ctx.closePath();
-                    ctx.strokeStyle = 'rgba(255, 165, 0, 0.8)';
-                    ctx.stroke();
-                }
+        function updateStatus(t, c_dot, c_txt) {
+            const dot = document.getElementById('statusDot'), txt = document.getElementById('statusText');
+            dot.className = `h-2 w-2 rounded-full ${c_dot} status-pulse`;
+            txt.className = `text-[10px] font-mono ${c_txt} uppercase tracking-widest`;
+            txt.innerText = t;
+        }
 
-                // UI Label
-                ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-                ctx.fillRect(box[0], Math.max(0, box[1] - 45), 180, 40);
-                ctx.fillStyle = '#fff';
-                ctx.font = 'bold 12px Inter';
-                ctx.fillText(entz.gelenk, box[0] + 5, Math.max(0, box[1] - 30));
+        // Neue High-Performance Render Methode für das Live-Overlay
+        function renderCanvas() {
+            if(!loadedThermalImg) return;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 1. Draw Thermal Image
+            ctx.globalAlpha = 1.0;
+            ctx.drawImage(loadedThermalImg, 0, 0);
+            
+            // 2. Draw RGB Overlay if loaded
+            if(loadedRgbImg) {
+                const alpha = opacitySlider.value / 100;
+                ctx.globalAlpha = alpha;
+                ctx.drawImage(loadedRgbImg, 0, 0, canvas.width, canvas.height);
+            }
+            
+            // 3. Draw Findings (Boxes and Points)
+            ctx.globalAlpha = 1.0; // Reset Alpha for UI elements
+            currentFindings.forEach(d => {
+                const b = d.bbox;
+                const isCrit = d.severity === 'CRITICAL' || d.symmetrie_alarm;
+                const color = isCrit ? '#ef4444' : '#06b6d4';
+                
+                ctx.strokeStyle = color; 
+                ctx.lineWidth = 3; 
+                ctx.strokeRect(b[0], b[1], b[2], b[3]);
                 
                 ctx.fillStyle = color;
-                ctx.font = '11px monospace';
-                const alarmTxt = entz.symmetrie_alarm ? ` | SYMM WARN!` : '';
-                ctx.fillText(`${entz.temp.max}°C | Conf: ${entz.score}%${alarmTxt}`, box[0] + 5, Math.max(0, box[1] - 12));
+                ctx.beginPath();
+                ctx.arc(d.zentrum.x, d.zentrum.y, 6, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        function updateFindingsList(daten) {
+            const list = document.getElementById('findingsList');
+            list.innerHTML = '';
+            
+            if(daten.length === 0) {
+                list.innerHTML = '<div class="text-[10px] text-slate-500 italic text-center py-8">Keine Anomalien gefunden.</div>';
+                return;
+            }
+
+            daten.forEach(d => {
+                const isCrit = d.severity === 'CRITICAL' || d.symmetrie_alarm;
+                const colorClass = isCrit ? 'border-red-500/50 bg-red-500/10' : 'border-slate-800 bg-slate-900/40';
+                const textClass = isCrit ? 'text-red-400' : 'text-cyan-400';
+
+                const card = document.createElement('div');
+                card.className = `p-3 rounded-xl border ${colorClass} transition-all hover:scale-[1.02]`;
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-1">
+                        <span class="text-[11px] font-bold text-white">${d.gelenk}</span>
+                        <span class="text-[10px] font-mono ${textClass} font-bold">${d.temp.max}°C</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-[9px] text-slate-500 uppercase">${d.severity}</span>
+                        <span class="text-[9px] font-mono text-slate-400">SCORE: ${d.score}%</span>
+                    </div>
+                    ${d.symmetrie_alarm ? '<div class="mt-2 text-[8px] font-bold text-red-500 uppercase tracking-tighter">⚠️ Asymmetrie detektiert</div>' : ''}
+                `;
+                list.appendChild(card);
             });
         }
 
         function updateChart(history) {
             const ctxChart = document.getElementById('trendChart').getContext('2d');
-            
-            const labels = history.map(h => h.timestamp.split(' ')[0]); // Nur Datum
-            const temps = history.map(h => h.max_temp);
-            const anomalies = history.map(h => h.anomalien_count);
-
-            if (chartInstance) chartInstance.destroy();
-
-            chartInstance = new Chart(ctxChart, {
+            const h = history.slice(-12);
+            if(chart) chart.destroy();
+            chart = new Chart(ctxChart, {
                 type: 'line',
                 data: {
-                    labels: labels,
-                    datasets: [
-                        {
-                            label: 'Höchste Temperatur (°C)',
-                            data: temps,
-                            borderColor: '#06b6d4',
-                            backgroundColor: 'rgba(6, 182, 212, 0.1)',
-                            borderWidth: 3,
-                            tension: 0.4,
-                            fill: true,
-                            yAxisID: 'y'
-                        },
-                        {
-                            label: 'Anzahl Befunde',
-                            data: anomalies,
-                            borderColor: '#ef4444',
-                            borderWidth: 2,
-                            borderDash: [5, 5],
-                            tension: 0.1,
-                            yAxisID: 'y1'
-                        }
-                    ]
+                    labels: h.map(x => x.timestamp.split(' ')[0]),
+                    datasets: [{ 
+                        label: 'Max Temp (°C)', 
+                        data: h.map(x => x.max_temp), 
+                        borderColor: '#06b6d4', 
+                        borderWidth: 2,
+                        pointBackgroundColor: '#06b6d4',
+                        backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                        fill: true,
+                        tension: 0.4 
+                    }]
                 },
-                options: {
+                options: { 
                     responsive: true, maintainAspectRatio: false,
-                    interaction: { mode: 'index', intersect: false },
-                    scales: {
-                        x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8', font: {family: 'monospace'} } },
-                        y: { 
-                            type: 'linear', display: true, position: 'left',
-                            grid: { color: 'rgba(255,255,255,0.05)' },
-                            ticks: { color: '#06b6d4', callback: function(val){return val+'°C';} },
-                            suggestedMin: 30, suggestedMax: 42
-                        },
-                        y1: {
-                            type: 'linear', display: true, position: 'right',
-                            grid: { drawOnChartArea: false },
-                            ticks: { color: '#ef4444', stepSize: 1 },
-                            suggestedMin: 0, suggestedMax: 10
-                        }
+                    scales: { 
+                        y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#64748b', font: { size: 9, family: 'JetBrains Mono' } }, min: 30, max: 42 }, 
+                        x: { grid: { display: false }, ticks: { color: '#64748b', font: { size: 9, family: 'JetBrains Mono' } } } 
                     },
-                    plugins: { legend: { labels: { color: '#f8fafc', font: {family: 'Inter'} } } }
+                    plugins: { legend: { display: false } }
                 }
             });
         }
