@@ -1,7 +1,7 @@
 # ThermoAI Vision 🔬🌡️
 **Jugend Forscht 2026**
 
-ThermoAI Vision ist ein fortschrittliches System zur automatisierten Erkennung von Entzündungen in medizinischen Wärmebildern. Es kombiniert hochsichere In-Memory-Bildverarbeitung mit intelligenten Computer-Vision-Algorithmen, um pathologische Hitze-Signaturen – speziell im Bereich der Füße und Zehen – zu detektieren und zu klassifizieren.
+ThermoAI Vision ist ein fortschrittliches System zur automatisierten Erkennung von Entzündungen in medizinischen Wärmebildern. Es kombiniert hochsichere In-Memory-Bildverarbeitung mit intelligenten Computer-Vision-Algorithmen, um pathologische Hitze-Signaturen zu detektieren und zu klassifizieren.
 
 **Lead Researcher & Entwickler:** Jona Noack
 
@@ -9,47 +9,38 @@ ThermoAI Vision ist ein fortschrittliches System zur automatisierten Erkennung v
 
 ## ✨ Features
 
-* **Automatische anatomische Verankerung (V13):** Erkennt Zehen und Fußstrukturen in Wärmebildern vollautomatisch, ohne manuelle Markierungen.
+* **Automatische anatomische Verankerung (V16):** Erkennt Zehen und Fußstrukturen vollautomatisch. Wenn dies fehlschlägt, greift der intelligente `UniversalFinder` als Fallback für andere Körperteile.
 * **Hierarchische Multilevel-Segmentierung:** Nutzt Bilateral-Filter, CLAHE und morphologische Analysen zur präzisen Isolierung von Entzündungsherden.
-* **Enterprise Security:** DSGVO/HIPAA-konformes FastAPI-Backend. Bilder werden im RAM via AES-256 verschlüsselt und nach der Analyse restlos gelöscht.
+* **Enterprise Security:** DSGVO/HIPAA-konformes FastAPI-Backend mit Pydantic-Validierung. Bilder werden im RAM via AES-256 verschlüsselt und nach der Analyse restlos gelöscht.
 * **Zwei Benutzeroberflächen:**
-  * **Web-Dashboard:** Modernes Dark-Mode Interface (Tailwind CSS) mit XAI-Log (Explainable AI) und interaktiver Visualisierung.
-  * **Desktop GUI:** Lokales Tool (Tkinter) für die manuelle Markierung und schnelle lokale Berichterstellung (HTML-Report).
+  * **Web-Dashboard:** Modernes Dark-Mode Interface (Tailwind CSS) mit XAI-Log und interaktiver Visualisierung.
+  * **Desktop GUI:** Lokales Tool (Tkinter) für die schnelle lokale Berichterstellung (PDF-Report via ReportLab).
 
 ## 📂 Projektstruktur
 
-* `api.py` - Sicheres FastAPI-Backend mit Rate-Limiting und In-Memory-Verschlüsselung.
-* `berechnung.py` - Core-Engine (`ThermalAnalyzer`) zur Bildvorverarbeitung, statistischen Auswertung und Heuristik-Bewertung.
-* `fussfinder.py` - Algorithmus zur vollautomatischen Detektion der Zehen über Kontur- und Signalverarbeitung.
-* `gui.py` - Lokale Tkinter-Anwendung für manuelle Analysen und PDF/HTML-Reporting.
-* `Web/index.html` - Das Frontend-Dashboard zur Kommunikation mit der API.
+* `api.py` - Sicheres FastAPI-Backend mit Rate-Limiting, asynchronem Threadpool und In-Memory-Verarbeitung.
+* `berechnung.py` - Core-Engine (`ThermalAnalyzer`) zur Bildvorverarbeitung und Pydantic-Validierung.
+* `fussfinder.py` - Algorithmus zur Detektion der Zehen über Kontur- und Signalverarbeitung.
+* `universal_finder.py` - Generische Hotspot-Erkennung als Fallback.
+* `gui.py` - Lokale Tkinter-Anwendung für Analysen und PDF-Reporting.
+* `Web/index.html` - Das Frontend-Dashboard.
 * `requirements.txt` - Alle Python-Abhängigkeiten.
 
 ## 🚀 Installation
 
-1. Repository klonen oder herunterladen.
+1. Repository klonen.
 2. Virtuelle Umgebung erstellen und aktivieren:
-    ```python -m venv venv
-    source venv/bin/activate  # Windows: venv\Scripts\activate```
-3. Abhöngigkeiten installieren:
-    ```pip install -r requirements.txt```
+    ```bash
+    python -m venv venv
+    source venv/bin/activate  # Windows: venv\Scripts\activate
+    ```
+3. Abhängigkeiten installieren:
+    ```bash
+    pip install -r requirements.txt
+    ```
 
 ## 💻 Nutzung
 
-1. Web-API Backend starte
-Um das Backend für das Web-Dashboard bereitzustellen:
-
-```
+**1. Web-API Backend starten:**
+```bash
 uvicorn api:app --host 0.0.0.0 --port 8000 --reload
-```
-
-Anschließend die Datei `Web/index.html` im Browser öffnen.
-(Hinweis: Für die lokale Nutzung in der index.html die API_URL ggf. auf http://localhost:8000/analyze anpassen).
-
-2. Lokale Desktop-GUI starten
-Für die manuelle, lokale Auswertung ohne Web-Server:
-```python gui.py
-```
-
-## 🔒 Security & Datenschutz
-Dieses Projekt ist Privacy-First entwickelt. Hochgeladene Bilder in der API werden nicht auf der Festplatte gespeichert. Sie werden durch das cryptography-Modul sofort im Arbeitsspeicher verschlüsselt, analysiert und unmittelbar danach via Garbage Collection entfernt.

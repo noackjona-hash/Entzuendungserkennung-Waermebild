@@ -5,7 +5,6 @@ import os
 import datetime
 from PIL import Image, ImageTk
 
-# ReportLab Platypus Engine für High-End PDFs
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, Table, TableStyle
@@ -14,14 +13,14 @@ from reportlab.lib.units import cm
 
 from berechnung import ThermalAnalyzer, TrendManager
 from fussfinder import FootFinder
+from universal_finder import UniversalFinder
 
 class ClinicalDesktopApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("ThermoAI Vision - Clinical Workstation (v15)")
+        self.root.title("ThermoAI Vision - Clinical Workstation (v16)")
         self.root.geometry("1200x850")
         
-        # Style
         style = ttk.Style()
         style.theme_use('clam')
         style.configure('TFrame', background='#0f172a')
@@ -36,7 +35,6 @@ class ClinicalDesktopApp:
         self.setup_ui()
 
     def setup_ui(self):
-        # Top Bar
         top = ttk.Frame(self.root, padding=10)
         top.pack(side=tk.TOP, fill=tk.X)
         
@@ -45,10 +43,9 @@ class ClinicalDesktopApp:
         
         self.btn_export = ttk.Button(top, text="📄 Medizinischen Report (PDF) erstellen", command=self.export_pdf, state=tk.DISABLED)
         self.btn_export.pack(side=tk.RIGHT, padx=10)
-        ttk.Button(top, text="🔬 Auto-Scan (Füße)", command=self.run_analysis).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(top, text="🔬 Auto-Scan", command=self.run_analysis).pack(side=tk.RIGHT, padx=5)
         ttk.Button(top, text="📸 Wärmebild laden", command=self.load_image).pack(side=tk.RIGHT, padx=5)
 
-        # Canvas Area
         self.canvas_frame = tk.Frame(self.root, bg="#020617", bd=2, relief=tk.SUNKEN)
         self.canvas_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
@@ -70,7 +67,10 @@ class ClinicalDesktopApp:
             
         pts = FootFinder.find_toes(self.img_cv)
         if not pts:
-            return messagebox.showerror("Fehler", "Keine anatomischen Anker (Zehen) gefunden.")
+            pts = UniversalFinder.find_hotspots(self.img_cv)
+            
+        if not pts:
+            return messagebox.showerror("Fehler", "Keine anatomischen Anker oder Hotspots gefunden.")
             
         analyzer = ThermalAnalyzer(self.img_cv, messpunkte=pts, suchradius=80)
         self.ergebnisse = analyzer.analysiere()
@@ -95,7 +95,6 @@ class ClinicalDesktopApp:
         display_img = cv2.cvtColor(display_img, cv2.COLOR_BGR2RGB)
         h, w = display_img.shape[:2]
         
-        # Responsive Scaling
         c_w = self.canvas.winfo_width() or 1000
         c_h = self.canvas.winfo_height() or 700
         scale = min(c_w/w, c_h/h)
@@ -108,38 +107,32 @@ class ClinicalDesktopApp:
         self.canvas.create_image(c_w//2, c_h//2, anchor=tk.CENTER, image=self.tk_img)
 
     def export_pdf(self):
-        """Erstellt ein extrem professionelles PDF mit ReportLab Platypus."""
         if not self.ergebnisse: return
         save_path = filedialog.asksaveasfilename(defaultextension=".pdf", initialfile=f"Befund_{self.patient_id}_{datetime.datetime.now().strftime('%Y%m%d')}.pdf")
         if not save_path: return
 
-        # Dokument aufbauen
         doc = SimpleDocTemplate(save_path, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
         elements = []
         styles = getSampleStyleSheet()
         
-        # Eigene Styles
         title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=22, textColor=colors.HexColor("#0f172a"), spaceAfter=10)
         subtitle_style = ParagraphStyle('Sub', parent=styles['Normal'], fontName='Helvetica', fontSize=10, textColor=colors.gray, spaceAfter=20)
         heading_style = ParagraphStyle('Heading', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=14, spaceBefore=20, spaceAfter=10)
 
-        # Header
         elements.append(Paragraph("Radiologischer Thermografie-Befund", title_style))
-        elements.append(Paragraph(f"ThermoAI Vision v15 | Lead Researcher: Jona Noack | Jugend Forscht 2026", subtitle_style))
+        elements.append(Paragraph(f"ThermoAI Vision v16 | Lead Researcher: Jona Noack | Jugend Forscht 2026", subtitle_style))
         elements.append(Paragraph(f"<b>Patienten-ID:</b> {self.patient_id} &nbsp;&nbsp;&nbsp; <b>Datum:</b> {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}", styles['Normal']))
         elements.append(Spacer(1, 0.5*cm))
 
-        # Bild einbetten
         temp_img_path = "temp_export.jpg"
         cv2.imwrite(temp_img_path, self.img_cv)
         img = RLImage(temp_img_path, width=12*cm, height=9*cm)
         elements.append(img)
         elements.append(Spacer(1, 0.5*cm))
 
-        # Befunde Tabelle
         elements.append(Paragraph("1. Detektierte Anomalien & Messwerte", heading_style))
         
-        table_data = [["Gelenk / Region", "T-Max (°C)", "T-Mean (°C)", "Konfidenz", "Symmetrie-Warnung"]]
+        table_data = [["Region", "T-Max (°C)", "T-Mean (°C)", "Konfidenz", "Symmetrie-Warnung"]]
         for e in self.ergebnisse:
             sym_text = f"JA (Δ {e.delta_t_gegenseite:.1f}°C)" if e.symmetrie_alarm else "Nein"
             row = [e.gelenk_name, f"{e.stats_celsius.max_val:.1f}", f"{e.stats_celsius.mean_val:.1f}", f"{e.score_total:.1f}%", sym_text]
@@ -157,12 +150,11 @@ class ClinicalDesktopApp:
         ]))
         elements.append(t)
 
-        # Therapie Verlauf (History)
         elements.append(Paragraph("2. Historischer Therapieverlauf (Trend)", heading_style))
         history = TrendManager.load_history().get(self.patient_id, [])
         if history:
             hist_data = [["Datum", "Anzahl Befunde", "Höchste Temperatur"]]
-            for h in history[-5:]: # Letzte 5 Scans
+            for h in history[-5:]:
                 hist_data.append([h['timestamp'], str(h['anomalien_count']), f"{h['max_temp']} °C"])
             
             ht = Table(hist_data, colWidths=[5*cm, 4*cm, 4*cm])
@@ -176,7 +168,6 @@ class ClinicalDesktopApp:
         else:
             elements.append(Paragraph("Keine historischen Daten verfügbar.", styles['Normal']))
 
-        # PDF Generieren
         doc.build(elements)
         if os.path.exists(temp_img_path): os.remove(temp_img_path)
         messagebox.showinfo("Erfolg", "Medizinischer PDF-Report wurde generiert und gespeichert!")

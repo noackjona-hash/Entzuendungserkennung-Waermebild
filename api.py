@@ -1,26 +1,25 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Request, Form
-from fastapi.responses import JSONResponse # GEFIXT: Dieser Import hat gefehlt
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.concurrency import run_in_threadpool # VERBESSERUNG: Für performante Background-Tasks
+from fastapi.concurrency import run_in_threadpool
 import cv2
 import numpy as np
 import json
-import time
 from typing import Optional
 
 from berechnung import ThermalAnalyzer, TrendManager
 from fussfinder import FootFinder
+from universal_finder import UniversalFinder
 
 # =============================================================================
 # ENTERPRISE API SETUP
 # =============================================================================
 app = FastAPI(
     title="ThermoAI Vision Clinical API", 
-    version="16.0", # Version auf 16.0 angehoben
+    version="16.0",
     description="Backend für die automatisierte Entzündungserkennung (Jugend Forscht 2026)"
 )
 
-# Erlaubt alle Origins für die Web-Vorschau und lokale Tests
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -41,16 +40,11 @@ async def verify_key(request: Request):
 # =============================================================================
 
 @app.get("/")
-@app.get("/health") # GEFIXT: Das Dashboard pingt /health, nicht /
+@app.get("/health")
 async def root():
-    """Health-Check Endpoint zum Aufwecken des Servers."""
     return {"status": "online", "version": "16.0", "engine": "ThermoAI-Core-V16"}
 
 def process_image_sync(img_array: np.ndarray, patient_id: str):
-    """
-    VERBESSERUNG: Die eigentliche Analyse ist rechenintensiv.
-    Sie wurde in diese Funktion ausgelagert, damit sie im Threadpool laufen kann.
-    """
     img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
     if img is None:
         raise ValueError("Konnte Bilddaten nicht dekodieren.")
@@ -58,7 +52,10 @@ def process_image_sync(img_array: np.ndarray, patient_id: str):
     messpunkte = FootFinder.find_toes(img)
     
     if not messpunkte:
-        return None, "Keine anatomischen Anker gefunden. Bitte Bildqualität prüfen."
+        messpunkte = UniversalFinder.find_hotspots(img)
+    
+    if not messpunkte:
+        return None, "Bildqualität zu schlecht. Keine relevanten thermischen Regionen gefunden."
 
     analyzer = ThermalAnalyzer(img, messpunkte)
     befunde = analyzer.analysiere()
@@ -78,27 +75,22 @@ def process_image_sync(img_array: np.ndarray, patient_id: str):
                 "konturen": {k: v.reshape(-1, 2).tolist() for k, v in b.konturen_ebenen.items()}
             } for b in befunde
         ],
-        "protokoll": analyzer.protokoll,
+        "protokoll": analyzer.analyse_protokoll,
         "history_trend": history
     }, None
 
 @app.post("/analyze", dependencies=[Depends(verify_key)])
 async def analyze(
     file: UploadFile = File(...),
-    patient_id: str = Form("ANONYMOUS"),
-    manual_points: str = Form("[]")
+    patient_id: str = Form("ANONYMOUS")
 ):
     try:
-        # VERBESSERUNG: Validierung, ob überhaupt ein Bild gesendet wurde
         if not file.content_type.startswith("image/"):
             return JSONResponse(status_code=400, content={"detail": "Nur Bilddateien sind erlaubt."})
 
-        # Bild in den RAM laden
         content = await file.read()
         nparr = np.frombuffer(content, np.uint8)
         
-        # VERBESSERUNG: Ausführung der Analyse in einem separaten Thread,
-        # damit die FastAPI nicht während der Berechnung blockiert.
         result_data, error_msg = await run_in_threadpool(process_image_sync, nparr, patient_id)
         
         if error_msg:
@@ -110,12 +102,8 @@ async def analyze(
         print(f"CRITICAL ERROR: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# =============================================================================
-# NEUE ERWEITERUNG
-# =============================================================================
 @app.get("/history/{patient_id}", dependencies=[Depends(verify_key)])
 async def get_history(patient_id: str):
-    """Gibt den historischen Temperatur-Verlauf eines bestimmten Patienten zurück."""
     history_db = TrendManager.load_history()
     if patient_id in history_db:
         return {"patient_id": patient_id, "scans": history_db[patient_id]}
@@ -123,5 +111,4 @@ async def get_history(patient_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    # Wichtig für Render: Port muss über Umgebungsvariable oder default 8000 kommen
     uvicorn.run(app, host="0.0.0.0", port=8000)

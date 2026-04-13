@@ -50,21 +50,18 @@ class FootFinder:
             smoothed = np.convolve(top_edge, np.ones(10)/10, mode='same')
             
             # 3. Peak-Finding (Täler in der Y-Achse sind Spitzen im Bild)
-            # Signal invertieren für den Peak-Finder
             inverted = fh - smoothed
             
             # Finde die Zehen-Spitzen (Peaks)
-            # distance=fw//8 stellt sicher, dass die Zehen nicht zu nah beieinander liegen
             peaks, _ = find_peaks(inverted, distance=max(10, fw//8), prominence=3)
             
-            # Sortiere die gefundenen Zehen von links nach rechts
             peaks = sorted(peaks)
             
             for j, p in enumerate(peaks[:5]): # Maximal 5 Zehen
                 px = fx + p
                 py = fy + int(top_edge[p]) + 15 # 15 Pixel nach unten, um im Zentrum der Zehe zu sein
                 
-                # Anatomisch korrekt benennen (Linker Fuß: Großer Zeh ist rechts / Rechter Fuß: Großer Zeh ist links)
+                # Anatomisch korrekt benennen
                 num = j + 1 if i == 1 else 5 - j
                 detected_points.append({"name": f"{side} - Zeh {num}", "punkt": (px, py)})
                 
